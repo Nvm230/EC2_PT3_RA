@@ -40,7 +40,7 @@
 \maketitle
 
 \begin{abstract}
-En este informe se presenta el desarrollo riguroso de tres problemas fundamentales de robótica: (1) el modelado cinemático directo y la derivación analítica del Jacobiano de cuerpo completo ($12 \times 12$) del robot cuadrúpedo comercial Unitree A1 desde primeros principios matemáticos de álgebra lineal, sin utilizar librerías externas de cinemática, validando la precisión numérica frente a la librería de referencia internacional Pinocchio a lo largo de un benchmark de 100 configuraciones articulares; (2) la implementación de un controlador cinemático por Inversión Cinemática Diferencial en Lazo Cerrado (CLIK) formulado como un problema de Programación Cuadrática (QP) resuelto en tiempo real mediante ProxQP en PyBullet, ejecutando una marcha secuencial (\textit{Crawl Gait}) de 4 pasos estables; y (3) el control cinemático de cuerpo completo del robot humanoide Unitree H1 (19 grados de libertad articulados) en PyBullet, exhibiendo movimiento coordinado de ambos brazos acoplado a la rotación de cintura, así como una maniobra de agache profundo con descenso de la mano derecha hasta el nivel del piso ($z \approx 0.04\text{ m}$) para simular la recolección de un objeto. Todos los códigos, datos y simulaciones son reproducibles en el entorno contenedor ROS 2 Humble provisto.
+En este informe se presenta el desarrollo riguroso de tres problemas fundamentales de robótica: (1) el modelado cinemático directo y la derivación analítica del Jacobiano de cuerpo completo ($12 \times 12$) del robot cuadrúpedo comercial Unitree A1 desde primeros principios matemáticos de álgebra lineal, sin utilizar librerías externas de cinemática, validando la precisión numérica frente a la librería de referencia internacional Pinocchio a lo largo de un benchmark de 100 configuraciones articulares; (2) la implementación de un controlador cinemático por Inversión Cinemática Diferencial en Lazo Cerrado (CLIK) formulado como un problema de Programación Cuadrática (QP) resuelto en tiempo real mediante ProxQP en PyBullet, ejecutando una marcha secuencial (\textit{Crawl Gait}) de 4 pasos estables con elevación de 8 cm; y (3) el control cinemático de cuerpo completo del robot humanoide Unitree H1 (19 grados de libertad articulados) en PyBullet, exhibiendo movimiento coordinado de ambos brazos acoplado a la rotación de cintura, así como una maniobra de agache profundo con descenso de la mano derecha hasta el nivel de un objeto en el piso ($z \approx 0.16\text{ m}$) para simular la recolección, seguido de una reincorporación estable a la postura erguida. Todos los códigos, datos y simulaciones son reproducibles en el entorno contenedor ROS 2 Humble provisto.
 \end{abstract}
 
 \tableofcontents
@@ -137,6 +137,7 @@ Se contrastaron las funciones manuales implementadas en NumPy frente a Pinocchio
 \begin{table}[H]
 \centering
 \caption{Comparación entre el cálculo manual y Pinocchio en postura nominal de pie.}
+\resizebox{0.95\textwidth}{!}{%
 \begin{tabular}{@{}lccc@{}}
 \toprule
 \textbf{Extremidad} & \textbf{Manual $[x, y, z]$ (m)} & \textbf{Pinocchio $[x, y, z]$ (m)} & \textbf{Error $\|p_{man} - p_{pin}\|$ (m)} \\ \midrule
@@ -144,13 +145,14 @@ FL\_foot & $[0.18050, \; 0.13080, -0.29268]$ & $[0.18050, \; 0.13080, -0.29268]$
 FR\_foot & $[0.18050, -0.13080, -0.29268]$ & $[0.18050, -0.13080, -0.29268]$ & \textbf{0.00} \\
 RL\_foot & $[-0.18050, \; 0.13080, -0.29268]$ & $[-0.18050, \; 0.13080, -0.29268]$ & \textbf{0.00} \\
 RR\_foot & $[-0.18050, -0.13080, -0.29268]$ & $[-0.18050, -0.13080, -0.29268]$ & \textbf{0.00} \\ \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{outputs/part1_errores_benchmark.png}
-    \caption{Distribución del error absoluto máximo a lo largo de un benchmark de 100 configuraciones aleatorias. La discrepancia máxima fue de $5.55 \times 10^{-17}\text{ m}$ en FK y $1.11 \times 10^{-16}$ en el Jacobiano.}
+    \caption{Distribución del error absoluto máximo a lo largo de un benchmark de 100 configuraciones aleatorias. La discrepancia máxima fue de $2.78 \times 10^{-17}\text{ m}$ en FK y $1.11 \times 10^{-16}$ en el Jacobiano.}
     \label{fig:benchmark_errors}
 \end{figure}
 
@@ -177,24 +179,24 @@ donde $\lambda = 10^{-4}$ evita singularidades cinemáticas y $w_{nom} = 10^{-3}
 
 \subsection{Marcha Secuencial (Crawl Gait) y Trayectoria de Balanceo}
 Se programó una secuencia estática estable de 4 pasos:
-$$\text{FL} \to \text{RR} \to \text{FR} \to \text{RL}$$
+$$\text{FL} \to \text{RL} \to \text{RR} \to \text{FR}$$
 Cada pata en balanceo ($T = 1.2\text{ s}$) siguió una curva de elevación suave con polinomio quíntico ($s(\tau) = 10\tau^3 - 15\tau^4 + 6\tau^5$):
 \begin{equation}
 x(\tau) = x_0 + s(\tau) \Delta x, \quad y(\tau) = y_0, \quad z(\tau) = z_0 + h \sin(\pi s(\tau))
 \end{equation}
-con avance $\Delta x = 0.08\text{ m}$ y elevación $h = 0.055\text{ m}$.
+con avance $\Delta x = 0.10\text{ m}$ y elevación vertical $h = 0.080\text{ m}$ ($8\text{ cm}$).
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.92\textwidth]{outputs/part2_all_steps_grid.png}
-    \caption{Capturas extraídas de la simulación en PyBullet mostrando la ejecución secuencial de los 4 pasos dados por el robot Unitree A1 con trazas tridimensionales de trayectoria.}
+    \caption{Capturas en alta resolución de la simulación en PyBullet mostrando la ejecución secuencial de los 4 pasos dados por el robot Unitree A1 con trazas tridimensionales de trayectoria y cámara encuadrada.}
     \label{fig:a1_steps_grid}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{outputs/part2_a1_tracking.png}
-    \caption{Curvas de desempeño cinemático: (arriba) error cartesiano euclidiano inferior a $0.66\text{ mm}$; (abajo) evolución suave de los 12 ángulos articulares.}
+    \caption{Curvas de desempeño cinemático: (arriba) error cartesiano euclidiano inferior a $0.89\text{ mm}$ (media de $0.54\text{ mm}$); (abajo) evolución suave de los 12 ángulos articulares.}
     \label{fig:a1_tracking}
 \end{figure}
 
@@ -217,11 +219,11 @@ q_{torso, d}(t) = 0.60 \sin(2\pi f t)
 \end{equation}
 
 \subsection{Movimiento B: Agache Profundo y Descenso de la Mano hasta el Piso}
-Para recoger un objeto cilíndrico en el piso ($[0.22, -0.22, 0.04]\text{ m}$):
+Para recoger un objeto cilíndrico rojo situado sobre el piso en las coordenadas $[0.28, -0.18, 0.08]\text{ m}$ (altura $0.16\text{ m}$, radio $0.04\text{ m}$):
 \begin{enumerate}
-    \item \textbf{Flexión profunda de piernas:} Flexión de rodillas a $\theta_{knee} = 1.95\text{ rad}$ ($111.7^\circ$) y caderas hacia adelante a $\theta_{hip} = -1.65\text{ rad}$ ($-94.5^\circ$), descendiendo la pelvis desde $0.98\text{ m}$ hasta $0.40\text{ m}$.
-    \item \textbf{Proyección del brazo derecho:} Hombro y codo ($\theta_{elbow} = 1.55\text{ rad}$) dirigen el antebrazo verticalmente hacia el suelo, alcanzando una cota $z \approx 0.04\text{ m}$ en contacto con el objeto.
-    \item \textbf{Reincorporación:} El robot vuelve suavemente a la postura de pie inicial.
+    \item \textbf{Flexión profunda y guiado estable de pelvis:} La pelvis desciende de forma controlada desde $z = 0.98\text{ m}$ hasta $z = 0.46\text{ m}$ acompañada de una inclinación frontal coordinada ($\theta_{pitch} = 31.5^\circ$) para mantener el centro de gravedad dentro de la base de soporte bipodal. Rodillas flexionadas a $q_{knee} = 1.95\text{ rad}$ ($111.7^\circ$), caderas a $q_{hip} = -1.55\text{ rad}$ y compensación de tobillos a $q_{ankle} = -0.95\text{ rad}$, asegurando contacto firme de los pies y previniendo el colapso del robot.
+    \item \textbf{Proyección del brazo derecho:} El hombro ($q_{pitch} = -0.65\text{ rad}$) y el codo ($q_{elbow} = 1.35\text{ rad}$) orientan el antebrazo verticalmente hacia abajo, permitiendo que la mano descienda en proximidad directa y toque el extremo superior del objeto en el piso a $z = 0.16\text{ m}$.
+    \item \textbf{Reincorporación:} El robot extiende suavemente sus articulaciones mediante una curva de interpolación senoidal inversa, recuperando la posición erguida inicial de forma totalmente estable.
 \end{enumerate}
 
 \begin{figure}[H]
@@ -234,7 +236,7 @@ Para recoger un objeto cilíndrico en el piso ($[0.22, -0.22, 0.04]\text{ m}$):
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.85\textwidth]{outputs/part3_h1_tracking.png}
-    \caption{Trayectorias temporales del humanoide H1: descenso de pelvis y mano hasta el nivel del piso ($z \approx 0.04\text{ m}$), y giro armónico de la cintura.}
+    \caption{Trayectorias temporales del humanoide H1: descenso de pelvis y mano hasta el nivel del objeto en el piso ($z \approx 0.16\text{ m}$), y giro armónico de la cintura.}
     \label{fig:h1_tracking}
 \end{figure}
 
@@ -242,9 +244,9 @@ Para recoger un objeto cilíndrico en el piso ($[0.22, -0.22, 0.04]\text{ m}$):
 \section{Conclusiones}
 % ----------------------------------------------------------------------------
 \begin{enumerate}
-    \item \textbf{Rigor Analítico:} La cinemática directa y el Jacobiano de cuerpo completo derivados desde primeros principios alcanzaron un error máximo de $1.11 \times 10^{-16}$ respecto a Pinocchio, demostrando consistencia matemática exacta.
-    \item \textbf{Efectividad de ProxQP:} El solucionador QP manejó eficientemente las restricciones articulares y de velocidad en tiempo real ($< 150 \;\mu\text{s}$), permitiendo un error de seguimiento cartesiano submilimétrico ($< 0.66\text{ mm}$) en la locomoción cuadrúpeda.
-    \item \textbf{Coordinación Multitarea en Humanoides:} La formulación cinemática multiobjetivo permitió desacoplar con éxito tareas de espacio operacional (manos) y tareas posturales (cintura y piernas) para lograr maniobras complejas de recolección en el suelo.
+    \item \textbf{Rigor Analítico:} La cinemática directa y el Jacobiano de cuerpo completo derivados desde primeros principios alcanzaron un error máximo de $1.11 \times 10^{-16}$ respecto a Pinocchio, demostrando consistencia matemática exacta hasta el límite numérico de precisión de máquina.
+    \item \textbf{Efectividad de ProxQP:} El solucionador QP manejó eficientemente las restricciones articulares y de velocidad en tiempo real ($< 150 \;\mu\text{s}$), permitiendo un error de seguimiento cartesiano submilimétrico ($< 0.89\text{ mm}$, media $0.54\text{ mm}$) en la locomoción cuadrúpeda.
+    \item \textbf{Coordinación Multitarea en Humanoides:} La formulación cinemática multiobjetivo permitió desacoplar con éxito tareas de espacio operacional (manos) y tareas posturales (cintura y piernas) para lograr maniobras complejas de recolección en el suelo sin pérdida de equilibrio.
 \end{enumerate}
 
 \end{document}

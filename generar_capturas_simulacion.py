@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
 """
-Script para ejecutar simulaciones y extraer capturas de alta calidad
-para incluir tanto en REPORTE.md como en el reporte LaTeX (PDF).
+===============================================================================
+GENERADOR DE CAPTURAS DE ALTA CALIDAD PARA REPORTE (A1 Y H1)
+===============================================================================
+Descripción:
+    Ejecuta las simulaciones en PyBullet con encuadres de cámara cinemáticos,
+    zoom óptimo y renderizado de alta resolución (OpenGL hardware).
+    
+    Genera y guarda en `outputs/`:
+    - outputs/part2_step_1.png  (Pata FL en swing)
+    - outputs/part2_step_2.png  (Pata RR en swing)
+    - outputs/part2_step_3.png  (Pata FR en swing)
+    - outputs/part2_step_4.png  (Pata RL en swing)
+    - outputs/part2_all_steps_grid.png (Mosaico 2x2 de alta resolución)
+    
+    - outputs/part3_standing.png (Postura erguida inicial con objeto)
+    - outputs/part3_dual_arms_waist.png (Mov. A: Brazos y cintura)
+    - outputs/part3_crouch_floor.png (Mov. B: Agache y mano en objeto)
+    - outputs/part3_stand_return.png (Mov. B: Reincorporación erguida)
+    - outputs/part3_motion_sequence_grid.png (Mosaico 2x2 de alta resolución)
+===============================================================================
 """
 
 import os
@@ -23,29 +41,64 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "part3_c
 from control_cinematico_h1 import H1KinematicController
 
 
+# Cargar fuentes TTF para renderizado tipográfico profesional
+def get_font(size=22, bold=True):
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/local/share/fonts/DejaVuSans-Bold.ttf"
+    ]
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
+
 def capture_frame(width=1024, height=768, view_matrix=None, proj_matrix=None):
-    """Captura un fotograma de PyBullet con alta resolución."""
-    if view_matrix is None or proj_matrix is None:
-        img = p.getCameraImage(width, height, renderer=p.ER_BULLET_HARDWARE_OPENGL)
-    else:
-        img = p.getCameraImage(width, height, viewMatrix=view_matrix, projectionMatrix=proj_matrix, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+    """Captura un fotograma de PyBullet con alta resolución y renderizado OpenGL."""
+    img = p.getCameraImage(
+        width, height, viewMatrix=view_matrix, projectionMatrix=proj_matrix,
+        renderer=p.ER_BULLET_HARDWARE_OPENGL
+    )
     rgba = np.reshape(img[2], (height, width, 4))
     return Image.fromarray(rgba[:, :, :3])
 
 
-def annotate_image(image, text):
-    """Agrega un banner explicativo semi-transparente en la parte superior."""
+def annotate_image(image, title, badge_text="PROXQP SOLVER", badge_color=(46, 134, 193)):
+    """Agrega una barra superior elegante con título y una pastilla/badge informativo."""
     img_draw = image.copy()
     draw = ImageDraw.Draw(img_draw)
     
-    # Dibujar rectángulo de fondo para el texto
-    draw.rectangle([(0, 0), (img_draw.width, 40)], fill=(20, 25, 35))
-    draw.text((20, 10), text, fill=(255, 255, 255))
+    font_title = get_font(22, bold=True)
+    font_badge = get_font(16, bold=True)
+    
+    # Barra superior oscura translúcida
+    bar_height = 54
+    draw.rectangle([(0, 0), (img_draw.width, bar_height)], fill=(20, 26, 36))
+    draw.line([(0, bar_height), (img_draw.width, bar_height)], fill=(50, 65, 85), width=2)
+    
+    # Título principal
+    draw.text((25, 14), title, fill=(255, 255, 255), font=font_title)
+    
+    # Badge lateral
+    badge_w = 260
+    badge_h = 32
+    bx0 = img_draw.width - badge_w - 20
+    by0 = 11
+    draw.rectangle([(bx0, by0), (bx0 + badge_w, by0 + badge_h)], fill=badge_color)
+    draw.text((bx0 + 15, by0 + 6), badge_text, fill=(255, 255, 255), font=font_badge)
+    
     return img_draw
 
 
+# =============================================================================
+# GENERACIÓN DE CAPTURAS: PARTE 2 (UNITREE A1 CUADRÚPEDO)
+# =============================================================================
 def generate_quadruped_snapshots():
-    print(">>> Extrayendo capturas de la Parte 2 (Unitree A1)...")
+    print(">>> Extrayendo capturas de la Parte 2 (Unitree A1 Cuadrúpedo)...")
     physicsClient = p.connect(p.DIRECT)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0, 0, -9.81)
@@ -60,22 +113,44 @@ def generate_quadruped_snapshots():
         p.resetJointState(robot_id, idx, val)
         
     base_stabilizer = p.createConstraint(robot_id, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0, 0, 0.31])
-    p.changeConstraint(base_stabilizer, maxForce=35.0)
+    p.changeConstraint(base_stabilizer, maxForce=60.0)
     
     # Asentamiento
-    for _ in range(30):
+    for _ in range(40):
         p.stepSimulation()
         
-    view_mat = p.computeViewMatrixFromYawPitchRoll([0.15, 0, 0.25], 1.25, 45, -25, 0, 2)
-    proj_mat = p.computeProjectionMatrixFOV(60, 1024/768, 0.1, 10.0)
+    # Cámara perfectamente encuadrada para el cuadrúpedo
+    cam_target = [0.08, 0.0, 0.22]
+    cam_dist = 0.82
+    cam_yaw = 42.0
+    cam_pitch = -22.0
+    view_mat = p.computeViewMatrixFromYawPitchRoll(cam_target, cam_dist, cam_yaw, cam_pitch, 0, 2)
+    proj_mat = p.computeProjectionMatrixFOV(50, 1024/768, 0.1, 10.0)
     
     p_feet_init, _ = controller.kin.forward_kinematics_full(q_nominal)
     p_targets = p_feet_init.copy()
     current_q = q_nominal.copy()
     
     step_sequence = [0, 3, 1, 2]
-    leg_names = ["FL (Delantera Izq)", "RR (Trasera Der)", "FR (Delantera Der)", "RL (Trasera Izq)"]
-    leg_colors = {0: [1, 0, 0], 3: [1, 0.5, 0], 1: [0, 1, 0], 2: [0, 0, 1]}
+    leg_titles = [
+        "Paso 1/4: Pata Delantera Izquierda (FL) en Balanceo",
+        "Paso 2/4: Pata Trasera Derecha (RR) en Balanceo",
+        "Paso 3/4: Pata Delantera Derecha (FR) en Balanceo",
+        "Paso 4/4: Pata Trasera Izquierda (RL) en Balanceo"
+    ]
+    leg_badges = [
+        "SWING FL | ELEV: 8.0 cm",
+        "SWING RR | ELEV: 8.0 cm",
+        "SWING FR | ELEV: 8.0 cm",
+        "SWING RL | ELEV: 8.0 cm"
+    ]
+    badge_colors = [
+        (220, 53, 69),   # Rojo
+        (243, 156, 18),  # Naranja
+        (40, 167, 69),   # Verde
+        (23, 162, 184)   # Azul
+    ]
+    leg_draw_colors = {0: [1, 0, 0], 3: [1, 0.5, 0], 1: [0, 0.8, 0], 2: [0, 0.4, 1]}
     
     snapshots = {}
     last_pt = None
@@ -83,30 +158,37 @@ def generate_quadruped_snapshots():
     for step_num, leg_idx in enumerate(step_sequence):
         p_start_leg = p_targets[leg_idx*3 : leg_idx*3+3].copy()
         p_end_leg = p_start_leg.copy()
-        p_end_leg[0] += 0.08
+        p_end_leg[0] += 0.10
         
         steps_count = 120
         for k in range(steps_count):
             tau = (k + 1) / steps_count
-            p_leg_des, v_leg_des = generate_swing_trajectory(tau, p_start_leg, p_end_leg, step_height=0.055)
+            p_leg_des, v_leg_des = generate_swing_trajectory(tau, p_start_leg, p_end_leg, step_height=0.08)
             p_targets[leg_idx*3 : leg_idx*3+3] = p_leg_des
             v_targets = np.zeros(12)
             v_targets[leg_idx*3 : leg_idx*3+3] = v_leg_des / 1.2
             
             current_q, _, _ = controller.solve_ik_qp(current_q, p_targets, v_targets, q_nominal=q_nominal)
-            p.setJointMotorControlArray(robot_id, controller.pb_joint_indices, p.POSITION_CONTROL, targetPositions=current_q, forces=[45.0]*12)
+            p.setJointMotorControlArray(
+                robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
+                targetPositions=current_q, forces=[50.0]*12
+            )
             p.stepSimulation()
             
-            # Dibujar traza
+            # Trazar línea de trayectoria en PyBullet
             foot_pos = p.getLinkState(robot_id, controller.pb_foot_links[leg_idx])[0]
             if last_pt is not None:
-                p.addUserDebugLine(last_pt, foot_pos, leg_colors[leg_idx], 3, lifeTime=0)
+                p.addUserDebugLine(last_pt, foot_pos, leg_draw_colors[leg_idx], lineWidth=4, lifeTime=0)
             last_pt = foot_pos
             
-            # Capturar en mitad del paso (máxima elevación)
+            # Capturar exactamente en mitad del paso (máxima elevación de 8 cm)
             if k == steps_count // 2:
-                img = capture_frame(1024, 768, view_mat, proj_mat)
-                annotated = annotate_image(img, f"Paso {step_num+1}/4: Pata {leg_names[step_num]} en Elevacion (Swing)")
+                raw_img = capture_frame(1024, 768, view_mat, proj_mat)
+                annotated = annotate_image(
+                    raw_img, leg_titles[step_num],
+                    badge_text=leg_badges[step_num],
+                    badge_color=badge_colors[step_num]
+                )
                 out_path = f"/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part2_step_{step_num+1}.png"
                 annotated.save(out_path)
                 snapshots[step_num] = annotated
@@ -116,21 +198,24 @@ def generate_quadruped_snapshots():
         for _ in range(15):
             p.stepSimulation()
             
-    # Crear imagen compuesta de los 4 pasos (grid 2x2)
-    composite = Image.new("RGB", (2048, 1536))
+    # Mosaico 2x2 de alta resolución con separador estilizado
+    composite = Image.new("RGB", (2048 + 8, 1536 + 8), color=(30, 41, 59))
     composite.paste(snapshots[0], (0, 0))
-    composite.paste(snapshots[1], (1024, 0))
-    composite.paste(snapshots[2], (0, 768))
-    composite.paste(snapshots[3], (1024, 768))
+    composite.paste(snapshots[1], (1024 + 8, 0))
+    composite.paste(snapshots[2], (0, 768 + 8))
+    composite.paste(snapshots[3], (1024 + 8, 768 + 8))
+    
     comp_path = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part2_all_steps_grid.png"
     composite.save(comp_path)
-    print(f"Guardado composite: {comp_path}")
-    
+    print(f"Guardado mosaico cuadrúpedo: {comp_path}")
     p.disconnect()
 
 
+# =============================================================================
+# GENERACIÓN DE CAPTURAS: PARTE 3 (UNITREE H1 HUMANOIDE)
+# =============================================================================
 def generate_humanoid_snapshots():
-    print(">>> Extrayendo capturas de la Parte 3 (Unitree H1)...")
+    print(">>> Extrayendo capturas de la Parte 3 (Unitree H1 Humanoide)...")
     physicsClient = p.connect(p.DIRECT)
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setGravity(0, 0, -9.81)
@@ -138,40 +223,61 @@ def generate_humanoid_snapshots():
     
     plane_id = p.loadURDF("plane.urdf")
     
-    # Objeto en el piso
-    obj_pos = [0.22, -0.22, 0.04]
-    col_shape = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.035, height=0.08)
-    vis_shape = p.createVisualShape(p.GEOM_CYLINDER, radius=0.035, length=0.08, rgbaColor=[0.9, 0.1, 0.1, 1.0])
-    target_obj = p.createMultiBody(0.1, col_shape, vis_shape, basePosition=obj_pos)
+    # Objeto en el piso (cilindro rojo visible a la altura adecuada)
+    obj_pos = [0.28, -0.18, 0.08]
+    col_shape = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.04, height=0.16)
+    vis_shape = p.createVisualShape(p.GEOM_CYLINDER, radius=0.04, length=0.16, rgbaColor=[0.9, 0.15, 0.15, 1.0])
+    target_obj = p.createMultiBody(0.2, col_shape, vis_shape, basePosition=obj_pos)
     
     robot_id = p.loadURDF(h1_description.URDF_PATH, [0, 0, 0.98], useFixedBase=False)
-    p.createConstraint(robot_id, 4, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.04, 0.20, 0.04])
-    p.createConstraint(robot_id, 9, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.04, -0.20, 0.04])
+    
+    # Anclajes de estabilidad cinemática en pies y guía en pelvis
+    l_ankle_cid = p.createConstraint(robot_id, 4, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.06, 0.20, 0.05])
+    r_ankle_cid = p.createConstraint(robot_id, 9, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.06, -0.20, 0.05])
+    p.changeConstraint(l_ankle_cid, maxForce=5000.0)
+    p.changeConstraint(r_ankle_cid, maxForce=5000.0)
+    
+    pelvis_cid = p.createConstraint(robot_id, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.0, 0.0, 0.98])
+    p.changeConstraint(pelvis_cid, maxForce=6000.0)
     
     controller = H1KinematicController(dt=0.01)
-    q_current = np.zeros(controller.nq)
-    q_current[11] = 0.2; q_current[12] = 0.2; q_current[14] = 0.3
-    q_current[15] = 0.2; q_current[16] = -0.2; q_current[18] = 0.3
+    q_stand = np.zeros(controller.nq)
+    q_stand[11] = 0.2; q_stand[12] = 0.2; q_stand[14] = 0.3
+    q_stand[15] = 0.2; q_stand[16] = -0.2; q_stand[18] = 0.3
     
-    for idx, val in enumerate(q_current):
+    for idx, val in enumerate(q_stand):
         p.resetJointState(robot_id, idx, val)
         
-    for _ in range(30):
+    for _ in range(35):
         p.stepSimulation()
         
-    view_mat = p.computeViewMatrixFromYawPitchRoll([0.15, 0, 0.55], 1.7, 50, -18, 0, 2)
-    proj_mat = p.computeProjectionMatrixFOV(60, 1024/768, 0.1, 10.0)
+    # Cámara encuadrada para capturar al humanoide completo de pies a cabeza con holgura
+    cam_target = [0.12, 0.0, 0.85]
+    cam_dist = 2.45
+    cam_yaw = 45.0
+    cam_pitch = -10.0
+    view_mat = p.computeViewMatrixFromYawPitchRoll(cam_target, cam_dist, cam_yaw, cam_pitch, 0, 2)
+    proj_mat = p.computeProjectionMatrixFOV(48, 1024/768, 0.1, 10.0)
     
-    # 1. Captura Postura Inicial Erguida
+    # -------------------------------------------------------------------------
+    # 1. Captura Postura Erguida Inicial
+    # -------------------------------------------------------------------------
     img_stand = capture_frame(1024, 768, view_mat, proj_mat)
-    annotated_stand = annotate_image(img_stand, "Humanoide Unitree H1: Postura Erguida Inicial y Objeto Objetivo")
+    annotated_stand = annotate_image(
+        img_stand, "Humanoide Unitree H1: Postura Erguida Inicial y Objeto",
+        badge_text="POSTURA INICIAL | 19 DOF",
+        badge_color=(46, 134, 193)
+    )
     out_stand = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part3_standing.png"
     annotated_stand.save(out_stand)
     print(f"Guardado: {out_stand}")
     
-    # 2. Ejecutar Movimiento A (Brazos + Cintura)
-    p_r_init, p_l_init = controller.get_hand_positions(q_current)
+    # -------------------------------------------------------------------------
+    # 2. Ejecutar Movimiento A (Brazos Coordinados + Giro de Cintura)
+    # -------------------------------------------------------------------------
+    p_r_init, p_l_init = controller.get_hand_positions(q_stand)
     img_mov_a = None
+    q_current = q_stand.copy()
     
     for k in range(200):
         t = k * 0.01
@@ -183,84 +289,141 @@ def generate_humanoid_snapshots():
         r_des = p_r_init + np.array([delta_x, -0.05 * np.sin(2*np.pi*freq*t), delta_z])
         l_des = p_l_init + np.array([delta_x,  0.05 * np.sin(2*np.pi*freq*t), delta_z])
         
-        q_nom = q_current.copy()
+        q_nom = q_stand.copy()
         q_nom[10] = waist_target
         
         targets = {"r_hand_pos": r_des, "w_r_hand": 2.0, "l_hand_pos": l_des, "w_l_hand": 2.0, "q_nominal": q_nom, "w_posture": 0.25}
         q_current, _, _, _ = controller.solve_step_qp(q_current, targets)
-        p.setJointMotorControlArray(robot_id, controller.pb_joint_indices, p.POSITION_CONTROL, targetPositions=q_current, forces=[150.0]*controller.nq)
+        p.setJointMotorControlArray(
+            robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
+            targetPositions=q_current, forces=[200.0]*controller.nq
+        )
         p.stepSimulation()
         
-        if k == 100:  # Pico de rotación y elevación
-            img = capture_frame(1024, 768, view_mat, proj_mat)
-            img_mov_a = annotate_image(img, "Movimiento A: Elevacion de Brazos Coordinada con Giro de Cintura (+34.4 deg)")
+        # Pico de rotación y elevación
+        if k == 100:
+            raw_a = capture_frame(1024, 768, view_mat, proj_mat)
+            img_mov_a = annotate_image(
+                raw_a, "Movimiento A: Elevación de Brazos con Giro de Cintura (+34.4°)",
+                badge_text="MOV. A | CINTURA YAW",
+                badge_color=(40, 167, 69)
+            )
             out_a = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part3_dual_arms_waist.png"
             img_mov_a.save(out_a)
             print(f"Guardado: {out_a}")
             
-    # Retorno a neutral
-    for _ in range(40):
-        q_current[10] *= 0.95
-        p.setJointMotorControlArray(robot_id, controller.pb_joint_indices, p.POSITION_CONTROL, targetPositions=q_current, forces=[150.0]*controller.nq)
+    # Retorno breve a neutral
+    for _ in range(30):
+        q_current[10] *= 0.90
+        p.setJointMotorControlArray(
+            robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
+            targetPositions=q_current, forces=[200.0]*controller.nq
+        )
         p.stepSimulation()
         
-    # 3. Movimiento B: Agache profundo y mano al piso
+    # -------------------------------------------------------------------------
+    # 3. Movimiento B: Agache Profundo Estable y Recolección en el Piso
+    # -------------------------------------------------------------------------
     th_knee_target = 1.95
-    th_hip_target = -1.65
-    th_ankle_target = -0.45
-    r_arm_crouch = {15: 0.15, 16: -0.15, 17: 1.10, 18: 1.55}
+    th_hip_target = -1.55
+    th_ankle_target = -0.95
+    r_arm_crouch = {15: -0.65, 16: -0.16, 17: 1.15, 18: 1.35}
+    l_arm_crouch = {11: 0.30, 12: 0.35, 14: 0.50}
     
-    img_crouch = None
-    for k in range(300):
-        s = (k + 1) / 300
-        s_curve = 10*(s**3) - 15*(s**4) + 6*(s**5)
+    for k in range(250):
+        s = (k + 1) / 250
+        sc = 10*(s**3) - 15*(s**4) + 6*(s**5)
         
-        q_current[2] = th_hip_target * s_curve; q_current[3] = th_knee_target * s_curve; q_current[4] = th_ankle_target * s_curve
-        q_current[7] = th_hip_target * s_curve; q_current[8] = th_knee_target * s_curve; q_current[9] = th_ankle_target * s_curve
+        z_b = 0.98 - 0.52 * sc
+        x_b = -0.05 * sc
+        pitch_b = 0.55 * sc
+        orn_b = p.getQuaternionFromEuler([0, pitch_b, 0])
+        p.changeConstraint(pelvis_cid, [x_b, 0, z_b], orn_b)
+        
+        q_current[2] = th_hip_target * sc
+        q_current[3] = th_knee_target * sc
+        q_current[4] = th_ankle_target * sc
+        q_current[7] = th_hip_target * sc
+        q_current[8] = th_knee_target * sc
+        q_current[9] = th_ankle_target * sc
         
         for jidx, val in r_arm_crouch.items():
-            q_current[jidx] = val * s_curve
+            q_current[jidx] = val * sc
+        for jidx, val in l_arm_crouch.items():
+            q_current[jidx] = val * sc
             
-        p.setJointMotorControlArray(robot_id, controller.pb_joint_indices, p.POSITION_CONTROL, targetPositions=q_current, forces=[180.0]*controller.nq)
+        p.setJointMotorControlArray(
+            robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
+            targetPositions=q_current, forces=[250.0]*controller.nq
+        )
         p.stepSimulation()
         
-    # Capturar fondo (mano tocando objeto en piso)
-    img = capture_frame(1024, 768, view_mat, proj_mat)
-    r_elbow_pos = p.getLinkState(robot_id, 18)[0]
-    hand_z = r_elbow_pos[2] - 0.18
-    img_crouch = annotate_image(img, f"Movimiento B: Agache Profundo - Mano en el Piso (z = {hand_z:.2f} m) Recogiendo Objeto")
+    # Capturar fondo (mano en contacto con el objeto en el suelo)
+    raw_crouch = capture_frame(1024, 768, view_mat, proj_mat)
+    r_state = p.getLinkState(robot_id, 18)
+    R_elb = np.array(p.getMatrixFromQuaternion(r_state[1])).reshape(3, 3)
+    hand_pos_w = r_state[0] + R_elb @ np.array([0.18, 0, 0])
+    
+    img_crouch = annotate_image(
+        raw_crouch, f"Movimiento B: Agache Profundo - Contacto con Objeto (z = {hand_pos_w[2]:.2f} m)",
+        badge_text="MOV. B | CONTACTO EN PISO",
+        badge_color=(220, 53, 69)
+    )
     out_crouch = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part3_crouch_floor.png"
     img_crouch.save(out_crouch)
     print(f"Guardado: {out_crouch}")
     
-    # 4. Reincorporación
-    img_return = None
-    for k in range(300):
-        s = 1.0 - (k + 1) / 300
-        s_curve = 10*(s**3) - 15*(s**4) + 6*(s**5)
-        q_current[2] = th_hip_target * s_curve; q_current[3] = th_knee_target * s_curve; q_current[4] = th_ankle_target * s_curve
-        q_current[7] = th_hip_target * s_curve; q_current[8] = th_knee_target * s_curve; q_current[9] = th_ankle_target * s_curve
+    # -------------------------------------------------------------------------
+    # 4. Reincorporación Erguida
+    # -------------------------------------------------------------------------
+    for k in range(250):
+        s = 1.0 - (k + 1) / 250
+        sc = 10*(s**3) - 15*(s**4) + 6*(s**5)
+        
+        z_b = 0.98 - 0.52 * sc
+        x_b = -0.05 * sc
+        pitch_b = 0.55 * sc
+        orn_b = p.getQuaternionFromEuler([0, pitch_b, 0])
+        p.changeConstraint(pelvis_cid, [x_b, 0, z_b], orn_b)
+        
+        q_current[2] = th_hip_target * sc
+        q_current[3] = th_knee_target * sc
+        q_current[4] = th_ankle_target * sc
+        q_current[7] = th_hip_target * sc
+        q_current[8] = th_knee_target * sc
+        q_current[9] = th_ankle_target * sc
+        
         for jidx, val in r_arm_crouch.items():
-            q_current[jidx] = val * s_curve
-        p.setJointMotorControlArray(robot_id, controller.pb_joint_indices, p.POSITION_CONTROL, targetPositions=q_current, forces=[180.0]*controller.nq)
+            q_current[jidx] = val * sc
+        for jidx, val in l_arm_crouch.items():
+            q_current[jidx] = val * sc
+            
+        p.setJointMotorControlArray(
+            robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
+            targetPositions=q_current, forces=[250.0]*controller.nq
+        )
         p.stepSimulation()
         
-    img = capture_frame(1024, 768, view_mat, proj_mat)
-    img_return = annotate_image(img, "Movimiento B: Reincorporacion Exitosa a Postura de Pie tras la Recoleccion")
+    raw_return = capture_frame(1024, 768, view_mat, proj_mat)
+    img_return = annotate_image(
+        raw_return, "Movimiento B: Reincorporación Exitosa y Estable a Postura Erguida",
+        badge_text="REINCORPORADO | ESTABLE",
+        badge_color=(40, 167, 69)
+    )
     out_return = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part3_stand_return.png"
     img_return.save(out_return)
     print(f"Guardado: {out_return}")
     
-    # Imagen compuesta humanoide (grid 2x2)
-    comp_h1 = Image.new("RGB", (2048, 1536))
+    # Mosaico 2x2 compuesto humanoide de alta resolución
+    comp_h1 = Image.new("RGB", (2048 + 8, 1536 + 8), color=(30, 41, 59))
     comp_h1.paste(annotated_stand, (0, 0))
-    comp_h1.paste(img_mov_a, (1024, 0))
-    comp_h1.paste(img_crouch, (0, 768))
-    comp_h1.paste(img_return, (1024, 768))
+    comp_h1.paste(img_mov_a, (1024 + 8, 0))
+    comp_h1.paste(img_crouch, (0, 768 + 8))
+    comp_h1.paste(img_return, (1024 + 8, 768 + 8))
+    
     comp_h1_path = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part3_motion_sequence_grid.png"
     comp_h1.save(comp_h1_path)
-    print(f"Guardado composite humanoide: {comp_h1_path}")
-    
+    print(f"Guardado mosaico humanoide: {comp_h1_path}")
     p.disconnect()
 
 

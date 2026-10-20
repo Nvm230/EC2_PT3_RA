@@ -201,8 +201,16 @@ def run_quadruped_gait_simulation(gui=True, record_video=False, video_path="outp
         p.changeDynamics(robot_id, foot_link, lateralFriction=1.5, spinningFriction=0.1)
         
     # Ajustar vista de la cámara
+    cam_target = [0.08, 0.0, 0.22]
+    cam_dist = 0.82
+    cam_yaw = 42.0
+    cam_pitch = -22.0
+    
+    view_mat = p.computeViewMatrixFromYawPitchRoll(cam_target, cam_dist, cam_yaw, cam_pitch, 0, 2)
+    proj_mat = p.computeProjectionMatrixFOV(50, 960/720, 0.1, 10.0)
+    
     if gui:
-        p.resetDebugVisualizerCamera(cameraDistance=1.2, cameraYaw=45, cameraPitch=-25, cameraTargetPosition=[0.1, 0, 0.25])
+        p.resetDebugVisualizerCamera(cameraDistance=cam_dist, cameraYaw=cam_yaw, cameraPitch=cam_pitch, cameraTargetPosition=cam_target)
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
         
     # Postura inicial de pie
@@ -218,7 +226,7 @@ def run_quadruped_gait_simulation(gui=True, record_video=False, video_path="outp
     for _ in range(50):
         p.setJointMotorControlArray(
             robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
-            targetPositions=q_nominal, forces=[30.0]*12
+            targetPositions=q_nominal, forces=[50.0]*12
         )
         p.stepSimulation()
         if gui:
@@ -227,17 +235,17 @@ def run_quadruped_gait_simulation(gui=True, record_video=False, video_path="outp
     # Configuración de la marcha secuencial
     # Secuencia clásica Crawl: 0 (FL) -> 3 (RR) -> 1 (FR) -> 2 (RL)
     step_sequence = [0, 3, 1, 2]
-    leg_names = ["FL (Delantera Izquierda)", "FR (Delantera Derecha)", "RL (Trasera Izquierda)", "RR (Trasera Derecha)"]
+    leg_names = ["FL (Delantera Izquierda)", "RR (Trasera Derecha)", "FR (Delantera Derecha)", "RL (Trasera Izquierda)"]
     leg_colors = {
-        0: [1, 0, 0],   # FL: Rojo
-        1: [0, 1, 0],   # FR: Verde
-        2: [0, 0, 1],   # RL: Azul
-        3: [1, 0.5, 0]  # RR: Naranja
+        0: [1, 0, 0],    # FL: Rojo
+        1: [0, 0.8, 0],  # FR: Verde
+        2: [0, 0.4, 1],  # RL: Azul
+        3: [1, 0.5, 0]   # RR: Naranja
     }
     
     step_duration = 1.2    # Segundos por paso
-    step_distance = 0.08   # Avance longitudinal (m)
-    step_height = 0.055    # Altura de elevación (m)
+    step_distance = 0.10   # Avance longitudinal (m)
+    step_height = 0.08     # Altura de elevación (8 cm)
     dt = 0.01
     
     # Frames de video si se activa grabación
@@ -329,8 +337,8 @@ def run_quadruped_gait_simulation(gui=True, record_video=False, video_path="outp
                 
             # Captura de fotogramas si se solicita grabación
             if record_video and (k % 2 == 0):
-                cam_img = p.getCameraImage(640, 480, renderer=p.ER_BULLET_HARDWARE_OPENGL)
-                rgba = np.reshape(cam_img[2], (480, 640, 4))
+                cam_img = p.getCameraImage(960, 720, viewMatrix=view_mat, projectionMatrix=proj_mat, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+                rgba = np.reshape(cam_img[2], (720, 960, 4))
                 frames.append(rgba[:, :, :3])
                 
         # Pausa breve entre pasos para asentamiento
@@ -379,14 +387,23 @@ def save_tracking_plots(time_log, errors_log, joint_angles_log):
     err_arr = np.array(errors_log)
     joints_arr = np.array(joint_angles_log)
     
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7), dpi=150, sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7.5), dpi=300, sharex=True)
     
     # 1. Error de seguimiento cartesiano
-    ax1.plot(time_arr, err_arr * 1000.0, color="#d62728", linewidth=1.8, label="Error ||p_des - p_real||")
+    ax1.plot(time_arr, err_arr * 1000.0, color="#d62728", linewidth=2.0, label="Error ||p_des - p_real||")
     ax1.set_ylabel("Error de Rastreo (mm)", fontsize=11, fontweight="bold")
-    ax1.set_title("Desempeño del Control Cinemático con ProxQP (Unitree A1)", fontsize=12, fontweight="bold")
+    ax1.set_title("Desempeño del Control Cinemático con ProxQP (Unitree A1)", fontsize=13, fontweight="bold")
     ax1.grid(True, linestyle="--", alpha=0.6)
-    ax1.legend(loc="upper right")
+    
+    # Badge con error máximo y medio
+    max_err_mm = np.max(err_arr) * 1000.0
+    mean_err_mm = np.mean(err_arr) * 1000.0
+    ax1.text(
+        0.02, 0.85, f"Error Máx: {max_err_mm:.3f} mm\nError Med: {mean_err_mm:.3f} mm\nSolver: ProxQP (Dense)",
+        transform=ax1.transAxes, fontsize=9.5, verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="#fef9e7", edgecolor="#d4ac0d", alpha=0.9)
+    )
+    ax1.legend(loc="upper right", fontsize=9.5)
     
     # 2. Trayectoria de ángulos articulares
     labels = ["FL Hip", "FL Thigh", "FL Calf", "FR Hip", "FR Thigh", "FR Calf",

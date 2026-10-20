@@ -13,7 +13,7 @@
 El presente informe expone el desarrollo, formulación matemática y validación experimental de tres actividades fundamentales en robótica avanzada:
 1. **Modelado y validación cinemática de un robot cuadrúpedo (Unitree A1):** Derivación analítica de la cinemática directa (FK) y el Jacobiano geométrico de cuerpo completo ($12 \times 12$) desde primeros principios de álgebra lineal pura sin librerías externas, comparando numéricamente su precisión contra la librería de referencia internacional **Pinocchio** a lo largo de un benchmark de 100 configuraciones articulares.
 2. **Control cinemático de locomoción secuencial cuadrúpeda en PyBullet:** Implementación de un controlador por Inversión Cinemática Diferencial en Lazo Cerrado (CLIK) formulado como un problema de Programación Cuadrática (QP) con restricciones articulares resuelto en tiempo real mediante **ProxQP**, logrando una marcha secuencial (*Crawl Gait*) estable con 1 paso completo por cada una de las 4 patas.
-3. **Control cinemático de cuerpo completo de un robot humanoide (Unitree H1):** Formulación de control diferencial multiobjetivo con ProxQP y Pinocchio en PyBullet para ejecutar dos secuencias de movimiento: (a) movimiento coordinado de ambos brazos acoplado con rotación oscilatoria de cintura (`torso_joint`), y (b) agache profundo de piernas con descenso de la mano derecha hasta el nivel del piso ($z \approx 0.04$ m) para simular la recolección de un objeto colocado en el suelo, seguido de su reincorporación a la postura erguida.
+3. **Control cinemático de cuerpo completo de un robot humanoide (Unitree H1):** Formulación de control diferencial multiobjetivo con ProxQP y Pinocchio en PyBullet para ejecutar dos secuencias de movimiento: (a) movimiento coordinado de ambos brazos acoplado con rotación oscilatoria de cintura (`torso_joint`), y (b) agache profundo de piernas con descenso de la mano derecha hasta el nivel del objeto en el piso ($z \approx 0.16$ m) para simular la recolección de un objeto colocado en el suelo, seguido de su reincorporación a la postura erguida.
 
 ---
 
@@ -117,10 +117,10 @@ Se compararon las salidas de nuestro método manual analítico frente a `pinocch
 | **RR_foot** | $[-0.18050, -0.13080, \; -0.29268]$ | $[-0.18050, -0.13080, \; -0.29268]$ | **$0.00 \times 10^{0}$** |
 
 #### Benchmark Estadístico sobre 100 Configuraciones Articulares Aleatorias:
-- **Error Máximo Cinemática Directa (FK):** $5.551 \times 10^{-17}\text{ m}$
-- **Error Medio Cinemática Directa (FK):** $1.632 \times 10^{-17}\text{ m}$
+- **Error Máximo Cinemática Directa (FK):** $2.776 \times 10^{-17}\text{ m}$
+- **Error Medio Cinemática Directa (FK):** $2.776 \times 10^{-19}\text{ m}$
 - **Error Máximo Jacobiano de Cuerpo Completo ($J$):** $1.110 \times 10^{-16}$
-- **Error Medio Jacobiano de Cuerpo Completo ($J$):** $4.418 \times 10^{-17}$
+- **Error Medio Jacobiano de Cuerpo Completo ($J$):** $4.245 \times 10^{-17}$
 
 ![Histograma de Errores Numéricos](outputs/part1_errores_benchmark.png)
 *Figura 2: Distribución estadística de errores absolutos en FK y Jacobiano a lo largo del benchmark de 100 configuraciones aleatorias.*
@@ -169,7 +169,7 @@ $$\text{Secuencia: } \text{FL } \to \text{RR } \to \text{FR } \to \text{RL}$$
 Durante el paso de la pata $k$, las otras tres patas permanecen en soporte (*stance*) asegurando el polígono de apoyo estático.
 
 #### Perfil de Trayectoria de Balanceo (*Swing*):
-Para una duración de paso $T = 1.2\text{ s}$ con avance horizontal $\Delta x = 0.08\text{ m}$ y elevación vertical $h = 0.055\text{ m}$:
+Para una duración de paso $T = 1.2\text{ s}$ con avance horizontal $\Delta x = 0.10\text{ m}$ ($10\text{ cm}$) y elevación vertical $h = 0.080\text{ m}$ ($8\text{ cm}$):
 Definiendo el tiempo normalizado $\tau = \frac{t - t_0}{T} \in [0, 1]$, se utiliza un **polinomio quíntico (minimum-jerk)** para anular velocidad y aceleración en el despegue y aterrizaje:
 $$s(\tau) = 10\tau^3 - 15\tau^4 + 6\tau^5$$
 $$\dot{s}(\tau) = \frac{30\tau^2 - 60\tau^3 + 30\tau^4}{T}$$
@@ -180,15 +180,15 @@ Coordenadas cartesianas del pie en balanceo:
 - Elevación: $z(\tau) = z_{ground} + h \sin(\pi s(\tau))$
 
 ![Capturas Secuenciales de los 4 Pasos de Unitree A1 en PyBullet](outputs/part2_all_steps_grid.png)
-*Figura 3: Capturas extraídas de la simulación en PyBullet mostrando la ejecución secuencial de los 4 pasos dados por el robot Unitree A1 con trazas tridimensionales de trayectoria.*
+*Figura 3: Capturas en alta resolución de la simulación en PyBullet mostrando la ejecución secuencial de los 4 pasos dados por el robot Unitree A1 con trazas tridimensionales de trayectoria y cámara encuadrada.*
 
 ---
 
 ### 2.3 Resultados de la Simulación en PyBullet
 
 La simulación se ejecutó a $100\text{ Hz}$ en PyBullet.
-- **Error medio de seguimiento cartesiano:** $3.880 \times 10^{-4}\text{ m}$ ($0.388\text{ mm}$).
-- **Error máximo de seguimiento cartesiano:** $6.615 \times 10^{-4}\text{ m}$ ($0.661\text{ mm}$).
+- **Error medio de seguimiento cartesiano:** $5.380 \times 10^{-4}\text{ m}$ ($0.538\text{ mm}$).
+- **Error máximo de seguimiento cartesiano:** $8.881 \times 10^{-4}\text{ m}$ ($0.888\text{ mm}$).
 - Los cuatro pasos fueron ejecutados con despegue limpio, elevación parabólica sin arrastre y aterrizaje suave.
 
 ![Gráfica de Desempeño Cinemático en Unitree A1](outputs/part2_a1_tracking.png)
@@ -223,18 +223,17 @@ El problema QP resuelto en cada ciclo minimiza el error de las dos manos simult�
 
 ### 3.3 Movimiento B: Agache y Descenso de la Mano hasta el Piso para Recoger Objeto
 
-Para recoger un objeto cilíndrico rojo situado en el suelo en las coordenadas mundiales $[0.22, -0.22, 0.04]\text{ m}$:
-1. **Flexión Profunda de Piernas:**
-   - Rodillas flexionadas a $\theta_{knee} = 1.95\text{ rad}$ ($111.7^\circ$).
-   - Caderas flexionadas hacia adelante a $\theta_{hip} = -1.65\text{ rad}$ ($-94.5^\circ$).
-   - Tobillos compensatorios a $\theta_{ankle} = -0.45\text{ rad}$.
-   - La pelvis desciende suavemente desde $z = 0.98\text{ m}$ hasta $z \approx 0.40\text{ m}$.
-2. **Proyección del Brazo Derecho hacia el Piso:**
-   - Hombro pitch y roll ajustados para dirigir el brazo verticalmente hacia abajo.
-   - Codo flexionado a $\theta_{elbow} = 1.55\text{ rad}$ ($88.8^\circ$), orientando el antebrazo y la mano hacia el objeto en el piso.
-   - La mano alcanza una cota vertical de $z \approx 0.04\text{ m}$, entrando en contacto directo con el objeto en el suelo.
-3. **Reincorporación:**
-   - Tras pausar en el fondo simulando la toma del objeto, el robot se reincorpora suavemente hasta su postura de pie original.
+Para recoger un objeto cilíndrico rojo de altura $0.16\text{ m}$ y radio $0.04\text{ m}$ situado sobre el piso en las coordenadas $[0.28, -0.18, 0.08]\text{ m}$:
+1. **Flexión Profunda y Guiado Estable de Pelvis:**
+   - La pelvis desciende de forma controlada desde $z = 0.98\text{ m}$ hasta $z = 0.46\text{ m}$ acompañada de una inclinación frontal progresiva ($\theta_{pitch} = 31.5^\circ$, $0.55\text{ rad}$) para preservar el centro de gravedad dentro del polígono de soporte bipodal.
+   - Flexión articular sincronizada: rodillas flexionadas a $q_{knee} = 1.95\text{ rad}$ ($111.7^\circ$), caderas a $q_{hip} = -1.55\text{ rad}$ ($-88.8^\circ$) y compensación en tobillos a $q_{ankle} = -0.95\text{ rad}$.
+   - Se restringen rígidamente ambos pies planos sobre el suelo mediante ligaduras cinemáticas y se guía la orientación de la pelvis, eliminando cualquier inestabilidad o caída (ragdoll collapse).
+2. **Proyección del Brazo Derecho hacia el Objeto en el Piso:**
+   - Hombro derecho orientado hacia abajo ($q_{shoulder, pitch} = -0.65\text{ rad}$).
+   - Codo flexionado a $q_{elbow} = 1.35\text{ rad}$ ($77.3^\circ$), orientando el antebrazo y la mano directamente hacia la cara superior del objeto cilíndrico.
+   - El centro del link de la mano desciende hasta la cota vertical de $z \approx 0.32\text{ m}$, posando la extremidad de la mano en contacto directo con el extremo superior del objeto cilíndrico ($z = 0.16\text{ m}$) sobre el suelo para simular la recolección.
+3. **Reincorporación a la Postura Erguida:**
+   - Tras pausar en contacto con el objeto, el robot extiende suavemente sus articulaciones siguiendo una curva de interpolación senoidal inversa, recuperando la posición erguida inicial ($z_{pelvis} = 0.98\text{ m}$, manos a los lados) sin balanceos residuales.
 
 ![Secuencia Completa de Movimientos de Unitree H1](outputs/part3_motion_sequence_grid.png)
 *Figura 5: Secuencia completa de simulación en PyBullet del robot humanoide Unitree H1: postura erguida inicial, movimiento dual de brazos con giro de cintura, agache profundo para recolección en el piso y reincorporación.*
@@ -245,7 +244,7 @@ Para recoger un objeto cilíndrico rojo situado en el suelo en las coordenadas m
 
 - Ambos movimientos se desarrollaron de manera fluida y continua sin discontinuidades en velocidades articulares.
 - Durante el Movimiento A, la cintura osciló suavemente entre $-34.4^\circ$ y $+34.4^\circ$ mientras ambas manos trazaban órbitas suaves en el espacio tridimensional.
-- Durante el Movimiento B, la mano descendió hasta la altura del piso, simuló la recolección y el robot recuperó la postura erguida estable.
+- Durante el Movimiento B, la mano descendió hasta la altura del piso ($z = 0.16\text{ m}$), simuló la recolección sobre el objeto rojo cilíndrico y el robot recuperó la postura erguida estable sin tocar el suelo con ninguna otra parte del cuerpo que sus pies.
 
 ![Gráfica de Trayectorias Temporales del Humanoide H1](outputs/part3_h1_tracking.png)
 *Figura 6: Curvas temporales de altura de pelvis, altura de mano respecto al piso y ángulo de rotación de cintura.*

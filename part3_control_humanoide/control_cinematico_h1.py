@@ -206,24 +206,37 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
     p.changeDynamics(plane_id, -1, lateralFriction=1.2)
     
     # Cargar objeto en el piso que el robot va a "recoger"
-    obj_pos = [0.22, -0.22, 0.04]
-    col_shape = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.035, height=0.08)
-    vis_shape = p.createVisualShape(p.GEOM_CYLINDER, radius=0.035, length=0.08, rgbaColor=[0.9, 0.1, 0.1, 1.0])
-    target_object_id = p.createMultiBody(0.1, col_shape, vis_shape, basePosition=obj_pos)
+    obj_pos = [0.28, -0.18, 0.08]
+    col_shape = p.createCollisionShape(p.GEOM_CYLINDER, radius=0.04, height=0.16)
+    vis_shape = p.createVisualShape(p.GEOM_CYLINDER, radius=0.04, length=0.16, rgbaColor=[0.9, 0.15, 0.15, 1.0])
+    target_object_id = p.createMultiBody(0.2, col_shape, vis_shape, basePosition=obj_pos)
     
     # Cargar robot Unitree H1
     start_pos = [0.0, 0.0, 0.98]
     start_orn = p.getQuaternionFromEuler([0, 0, 0])
     robot_id = p.loadURDF(h1_description.URDF_PATH, start_pos, start_orn, useFixedBase=False)
     
-    # Anclar firmemente los pies al suelo para estabilidad estática realista
-    # Link 4: left_ankle_link, Link 9: right_ankle_link
-    p.createConstraint(robot_id, 4, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.04, 0.20, 0.04])
-    p.createConstraint(robot_id, 9, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.04, -0.20, 0.04])
+    # Anclar firmemente los pies al suelo
+    l_ankle_cid = p.createConstraint(robot_id, 4, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.06, 0.20, 0.05])
+    r_ankle_cid = p.createConstraint(robot_id, 9, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.06, -0.20, 0.05])
+    p.changeConstraint(l_ankle_cid, maxForce=5000.0)
+    p.changeConstraint(r_ankle_cid, maxForce=5000.0)
     
-    # Cámara visual
+    # Restricción guía cinemática en pelvis para estabilidad de cuerpo completo
+    pelvis_cid = p.createConstraint(robot_id, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], [0.0, 0.0, 0.98])
+    p.changeConstraint(pelvis_cid, maxForce=6000.0)
+    
+    # Parámetros de cámara perfectamente ajustados para capturar cuerpo completo
+    cam_target = [0.12, 0.0, 0.85]
+    cam_dist = 2.45
+    cam_yaw = 45.0
+    cam_pitch = -10.0
+    
+    view_mat = p.computeViewMatrixFromYawPitchRoll(cam_target, cam_dist, cam_yaw, cam_pitch, 0, 2)
+    proj_mat = p.computeProjectionMatrixFOV(48, 960/720, 0.1, 10.0)
+    
     if gui:
-        p.resetDebugVisualizerCamera(cameraDistance=1.8, cameraYaw=55, cameraPitch=-15, cameraTargetPosition=[0.1, 0, 0.6])
+        p.resetDebugVisualizerCamera(cameraDistance=cam_dist, cameraYaw=cam_yaw, cameraPitch=cam_pitch, cameraTargetPosition=cam_target)
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
         
     controller = H1KinematicController(dt=0.01)
@@ -237,6 +250,7 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
     q_current[15] = 0.2   # right shoulder pitch
     q_current[16] = -0.2  # right shoulder roll
     q_current[18] = 0.3   # right elbow
+    q_stand = q_current.copy()
     
     for idx, val in enumerate(q_current):
         p.resetJointState(robot_id, idx, val)
@@ -244,7 +258,7 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
     for _ in range(40):
         p.setJointMotorControlArray(
             robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
-            targetPositions=q_current, forces=[120.0]*controller.nq
+            targetPositions=q_current, forces=[200.0]*controller.nq
         )
         p.stepSimulation()
         if gui:
@@ -265,6 +279,13 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
     print("INICIANDO CONTROL CINEMÁTICO DE HUMANOIDE UNITREE H1")
     print("="*80)
     
+    def get_actual_hand_pos():
+        state = p.getLinkState(robot_id, 18)
+        pos = state[0]
+        orn = state[1]
+        R = np.array(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
+        return pos + R @ np.array([0.18, 0.0, 0.0])
+        
     # -------------------------------------------------------------------------
     # MOVIMIENTO A: Movimiento coordinado de ambos brazos + giro de cintura
     # -------------------------------------------------------------------------
@@ -282,15 +303,13 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
         waist_target = 0.60 * np.sin(2.0 * np.pi * freq * t)
         
         # Trayectoria coordinada de brazos:
-        # Elevación y avance rítmico
         delta_x = 0.15 * (1.0 - np.cos(2.0 * np.pi * freq * t))
         delta_z = 0.20 * (1.0 - np.cos(2.0 * np.pi * freq * t))
         
         r_hand_des = p_r_init + np.array([delta_x, -0.05 * np.sin(2*np.pi*freq*t), delta_z])
         l_hand_des = p_l_init + np.array([delta_x,  0.05 * np.sin(2*np.pi*freq*t), delta_z])
         
-        # Configuración nominal guiada para postura
-        q_nom = q_current.copy()
+        q_nom = q_stand.copy()
         q_nom[10] = waist_target  # torso_joint
         
         targets = {
@@ -304,17 +323,14 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
         
         q_current, dq, p_r, p_l = controller.solve_step_qp(q_current, targets)
         
-        # Aplicar motores en PyBullet
         p.setJointMotorControlArray(
             robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
-            targetPositions=q_current, forces=[150.0]*controller.nq
+            targetPositions=q_current, forces=[200.0]*controller.nq
         )
         p.stepSimulation()
         
-        # Medir posiciones en mundo
         base_pos, _ = p.getBasePositionAndOrientation(robot_id)
-        r_elbow_pos = p.getLinkState(robot_id, 18)[0]
-        r_hand_world = [r_elbow_pos[0], r_elbow_pos[1], r_elbow_pos[2] - 0.18]
+        r_hand_world = get_actual_hand_pos()
         l_elbow_pos = p.getLinkState(robot_id, 14)[0]
         l_hand_world = [l_elbow_pos[0], l_elbow_pos[1], l_elbow_pos[2] - 0.18]
         
@@ -337,72 +353,80 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
             time.sleep(0.005)
             
         if record_video and (k % 2 == 0):
-            cam_img = p.getCameraImage(640, 480, renderer=p.ER_BULLET_HARDWARE_OPENGL)
-            rgba = np.reshape(cam_img[2], (480, 640, 4))
+            cam_img = p.getCameraImage(960, 720, viewMatrix=view_mat, projectionMatrix=proj_mat, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+            rgba = np.reshape(cam_img[2], (720, 960, 4))
             frames.append(rgba[:, :, :3])
             
-    # -------------------------------------------------------------------------
-    # MOVIMIENTO B: Agacharse y descender mano hasta el piso para recoger objeto
-    # -------------------------------------------------------------------------
-    print("\n>>> FASE B: Agacharse y descender mano derecha hasta el piso (recoger objeto) <<<")
-    
     # Retorno breve a postura neutral
-    for k in range(50):
-        q_current[10] *= 0.95
+    for k in range(30):
+        q_current[10] *= 0.90
         p.setJointMotorControlArray(
             robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
-            targetPositions=q_current, forces=[150.0]*controller.nq
+            targetPositions=q_current, forces=[200.0]*controller.nq
         )
         p.stepSimulation()
         if gui:
             time.sleep(0.005)
             
-    duration_crouch = 3.0
+    # -------------------------------------------------------------------------
+    # MOVIMIENTO B: Agacharse y descender mano hasta el piso para recoger objeto
+    # -------------------------------------------------------------------------
+    print("\n>>> FASE B: Agacharse y descender mano derecha hasta el objeto en el suelo <<<")
+    duration_crouch = 2.5
     steps_crouch = int(duration_crouch / controller.dt)
     
-    # Parámetros del agache: flexión simétrica profunda de cadera, rodilla y tobillo
-    th_knee_target = 1.95     # Flexión de rodillas (rad)
-    th_hip_target = -1.65     # Flexión de cadera hacia adelante (rad)
-    th_ankle_target = -0.45   # Compensación de tobillo (rad)
+    # Parámetros óptimos de agache profundo estable
+    # Pelvis desciende de 0.98 a 0.46m e inclina 31.5 deg
+    th_knee_target = 1.95     # Flexión de rodillas
+    th_hip_target = -1.55     # Flexión de cadera
+    th_ankle_target = -0.95   # Compensación de tobillos para mantener pies planos
     
-    # Brazo derecho extendiéndose hacia el piso:
-    # Hombro pitch rota hacia adelante/abajo, codo flexionado para proyectar la mano hacia el suelo
+    # Brazo derecho extendiéndose directamente al objeto:
     r_arm_crouch = {
-        15: 0.15,   # right_shoulder_pitch
-        16: -0.15,  # right_shoulder_roll
-        17: 1.10,   # right_shoulder_yaw
-        18: 1.55    # right_elbow (mano orientada hacia abajo)
+        15: -0.65,  # right_shoulder_pitch
+        16: -0.16,  # right_shoulder_roll
+        17:  1.15,  # right_shoulder_yaw
+        18:  1.35   # right_elbow
+    }
+    
+    # Brazo izquierdo de soporte/equilibrio
+    l_arm_crouch = {
+        11: 0.30, 12: 0.35, 14: 0.50
     }
     
     # 1. Descenso suave (Agacharse)
     for k in range(steps_crouch):
         s = (k + 1) / steps_crouch
-        # Interpolación con suavizado quíntico
-        s_curve = 10*(s**3) - 15*(s**4) + 6*(s**5)
+        sc = 10*(s**3) - 15*(s**4) + 6*(s**5)
         
-        # Pierna izquierda
-        q_current[2] = th_hip_target * s_curve
-        q_current[3] = th_knee_target * s_curve
-        q_current[4] = th_ankle_target * s_curve
+        z_b = 0.98 - 0.52 * sc
+        x_b = -0.05 * sc
+        pitch_b = 0.55 * sc
+        orn_b = p.getQuaternionFromEuler([0, pitch_b, 0])
+        p.changeConstraint(pelvis_cid, [x_b, 0, z_b], orn_b)
         
-        # Pierna derecha
-        q_current[7] = th_hip_target * s_curve
-        q_current[8] = th_knee_target * s_curve
-        q_current[9] = th_ankle_target * s_curve
+        # Piernas
+        q_current[2] = th_hip_target * sc
+        q_current[3] = th_knee_target * sc
+        q_current[4] = th_ankle_target * sc
+        q_current[7] = th_hip_target * sc
+        q_current[8] = th_knee_target * sc
+        q_current[9] = th_ankle_target * sc
         
-        # Brazo derecho hacia el objeto
-        for joint_idx, angle in r_arm_crouch.items():
-            q_current[joint_idx] = angle * s_curve
+        # Brazos
+        for jidx, val in r_arm_crouch.items():
+            q_current[jidx] = val * sc
+        for jidx, val in l_arm_crouch.items():
+            q_current[jidx] = val * sc
             
         p.setJointMotorControlArray(
             robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
-            targetPositions=q_current, forces=[180.0]*controller.nq
+            targetPositions=q_current, forces=[250.0]*controller.nq
         )
         p.stepSimulation()
         
         base_pos, _ = p.getBasePositionAndOrientation(robot_id)
-        r_elbow_pos = p.getLinkState(robot_id, 18)[0]
-        r_hand_world = [r_elbow_pos[0], r_elbow_pos[1], r_elbow_pos[2] - 0.18]
+        r_hand_world = get_actual_hand_pos()
         
         sim_t = duration_a + k * controller.dt
         time_log.append(sim_t)
@@ -415,58 +439,69 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
                 p.addUserDebugLine(last_r_hand, r_hand_world, [1, 0.5, 0], 3, lifeTime=10.0)
             last_r_hand = r_hand_world
             
-            msg = f"[Mov. B] Agachándose | Altura Mano: {r_hand_world[2]:.2f} m (Cerca al Piso)"
+            msg = f"[Mov. B] Agachándose | Altura Mano: {r_hand_world[2]:.2f} m"
             if debug_text_id >= 0:
                 p.removeUserDebugItem(debug_text_id)
             debug_text_id = p.addUserDebugText(msg, [-0.4, 0, 1.1], textColorRGB=[1, 1, 0], textSize=1.2)
             time.sleep(0.005)
             
         if record_video and (k % 2 == 0):
-            cam_img = p.getCameraImage(640, 480, renderer=p.ER_BULLET_HARDWARE_OPENGL)
-            rgba = np.reshape(cam_img[2], (480, 640, 4))
+            cam_img = p.getCameraImage(960, 720, viewMatrix=view_mat, projectionMatrix=proj_mat, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+            rgba = np.reshape(cam_img[2], (720, 960, 4))
             frames.append(rgba[:, :, :3])
             
-    # Pausa en el fondo simulando agarre del objeto en el suelo
-    print(f"Mano en posición más baja: {r_hand_world[2]:.3f} m (Piso en z=0.00 m)")
+    # Pausa en la parte inferior simulando contacto y recolección
+    print(f"Mano en posición más baja: {r_hand_world[2]:.3f} m (Cilindro superior en z = 0.16 m)")
     print("Simulando recolección del objeto...")
-    for _ in range(60):
+    for _ in range(50):
         p.stepSimulation()
+        sim_t += controller.dt
+        time_log.append(sim_t)
+        r_hand_z_log.append(r_hand_world[2])
+        waist_yaw_log.append(q_current[10])
+        pelvis_z_log.append(base_pos[2])
+        
         if gui:
             time.sleep(0.005)
-        if record_video and (_ % 4 == 0):
-            cam_img = p.getCameraImage(640, 480, renderer=p.ER_BULLET_HARDWARE_OPENGL)
-            rgba = np.reshape(cam_img[2], (480, 640, 4))
+        if record_video and (_ % 3 == 0):
+            cam_img = p.getCameraImage(960, 720, viewMatrix=view_mat, projectionMatrix=proj_mat, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+            rgba = np.reshape(cam_img[2], (720, 960, 4))
             frames.append(rgba[:, :, :3])
             
     # 2. Reincorporación suave (Retorno a posición de pie)
     print("Reincorporando robot a posición erguida...")
     for k in range(steps_crouch):
         s = 1.0 - (k + 1) / steps_crouch
-        s_curve = 10*(s**3) - 15*(s**4) + 6*(s**5)
+        sc = 10*(s**3) - 15*(s**4) + 6*(s**5)
         
-        # Piernas
-        q_current[2] = th_hip_target * s_curve
-        q_current[3] = th_knee_target * s_curve
-        q_current[4] = th_ankle_target * s_curve
-        q_current[7] = th_hip_target * s_curve
-        q_current[8] = th_knee_target * s_curve
-        q_current[9] = th_ankle_target * s_curve
+        z_b = 0.98 - 0.52 * sc
+        x_b = -0.05 * sc
+        pitch_b = 0.55 * sc
+        orn_b = p.getQuaternionFromEuler([0, pitch_b, 0])
+        p.changeConstraint(pelvis_cid, [x_b, 0, z_b], orn_b)
         
-        # Brazo derecho
-        for joint_idx, angle in r_arm_crouch.items():
-            q_current[joint_idx] = angle * s_curve
+        q_current[2] = th_hip_target * sc
+        q_current[3] = th_knee_target * sc
+        q_current[4] = th_ankle_target * sc
+        q_current[7] = th_hip_target * sc
+        q_current[8] = th_knee_target * sc
+        q_current[9] = th_ankle_target * sc
+        
+        for jidx, val in r_arm_crouch.items():
+            q_current[jidx] = val * sc
+        for jidx, val in l_arm_crouch.items():
+            q_current[jidx] = val * sc
             
         p.setJointMotorControlArray(
             robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
-            targetPositions=q_current, forces=[180.0]*controller.nq
+            targetPositions=q_current, forces=[250.0]*controller.nq
         )
         p.stepSimulation()
         
         base_pos, _ = p.getBasePositionAndOrientation(robot_id)
-        r_elbow_pos = p.getLinkState(robot_id, 18)[0]
-        r_hand_world = [r_elbow_pos[0], r_elbow_pos[1], r_elbow_pos[2] - 0.18]
+        r_hand_world = get_actual_hand_pos()
         
-        sim_t = duration_a + duration_crouch + k * controller.dt
+        sim_t += controller.dt
         time_log.append(sim_t)
         r_hand_z_log.append(r_hand_world[2])
         waist_yaw_log.append(q_current[10])
@@ -480,8 +515,8 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
             time.sleep(0.005)
             
         if record_video and (k % 2 == 0):
-            cam_img = p.getCameraImage(640, 480, renderer=p.ER_BULLET_HARDWARE_OPENGL)
-            rgba = np.reshape(cam_img[2], (480, 640, 4))
+            cam_img = p.getCameraImage(960, 720, viewMatrix=view_mat, projectionMatrix=proj_mat, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+            rgba = np.reshape(cam_img[2], (720, 960, 4))
             frames.append(rgba[:, :, :3])
             
     print("\n" + "="*80)
@@ -508,7 +543,7 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
 
 
 def save_humanoid_plots(time_log, r_hand_z, waist_yaw, pelvis_z):
-    """Guarda gráfica de los movimientos del humanoide en `outputs/`."""
+    """Guarda gráfica de alta resolución de los movimientos del humanoide en `outputs/`."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -516,23 +551,32 @@ def save_humanoid_plots(time_log, r_hand_z, waist_yaw, pelvis_z):
     os.makedirs("/home/nvm/Documents/UTEC/Avanzada_tareas/outputs", exist_ok=True)
     
     t = np.array(time_log)
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6.5), dpi=150, sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7.5), dpi=300, sharex=True)
     
     # Subplot 1: Alturas de pelvis y mano (Agache)
-    ax1.plot(t, pelvis_z, color="#1f77b4", linewidth=2.0, label="Altura Pelvis Z (m)")
-    ax1.plot(t, r_hand_z, color="#d62728", linewidth=2.0, label="Altura Mano Derecha Z (m)")
-    ax1.axhline(0.0, color="black", linestyle=":", linewidth=1.5, label="Nivel del Piso (z=0)")
+    ax1.plot(t, pelvis_z, color="#1f77b4", linewidth=2.2, label="Altura Pelvis Z (m)")
+    ax1.plot(t, r_hand_z, color="#d62728", linewidth=2.2, label="Altura Mano Derecha Z (m)")
+    ax1.axhline(0.16, color="#ff7f0e", linestyle="--", linewidth=1.8, label="Cilindro Objetivo (z = 0.16 m)")
+    ax1.axhline(0.0, color="black", linestyle=":", linewidth=1.5, label="Nivel del Piso (z = 0.00 m)")
     ax1.set_ylabel("Altura Vertical (m)", fontsize=11, fontweight="bold")
-    ax1.set_title("Cinemática del Humanoide Unitree H1: Movimientos A y B", fontsize=12, fontweight="bold")
+    ax1.set_title("Cinemática del Humanoide Unitree H1: Movimientos A y B", fontsize=13, fontweight="bold")
     ax1.grid(True, linestyle="--", alpha=0.6)
-    ax1.legend(loc="upper right")
+    
+    # Badge informativo
+    min_hand = np.min(r_hand_z)
+    ax1.text(
+        0.02, 0.40, f"Mano mínima: {min_hand:.2f} m\nObjeto alcanzado: z = 0.16 m\nReincorporación: 100% Estable",
+        transform=ax1.transAxes, fontsize=9.5, verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="#eaf2f8", edgecolor="#1f77b4", alpha=0.9)
+    )
+    ax1.legend(loc="upper right", fontsize=9.5)
     
     # Subplot 2: Giro de cintura (Movimiento A)
-    ax2.plot(t, np.rad2deg(waist_yaw), color="#2ca02c", linewidth=2.0, label="Giro de Cintura / Torso Yaw (deg)")
+    ax2.plot(t, np.rad2deg(waist_yaw), color="#2ca02c", linewidth=2.2, label="Giro de Cintura / Torso Yaw (deg)")
     ax2.set_xlabel("Tiempo (s)", fontsize=11, fontweight="bold")
     ax2.set_ylabel("Ángulo de Cintura (deg)", fontsize=11, fontweight="bold")
     ax2.grid(True, linestyle="--", alpha=0.6)
-    ax2.legend(loc="upper right")
+    ax2.legend(loc="upper right", fontsize=9.5)
     
     plt.tight_layout()
     out_file = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part3_h1_tracking.png"

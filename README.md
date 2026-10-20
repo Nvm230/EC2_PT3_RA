@@ -144,19 +144,31 @@ distrobox enter ros2_humble -- bash -c "source /opt/ros/humble/setup.bash && sou
 
 ---
 
-## 4. Archivos y Resultados Generados
+## 4. Galería Visual y Resultados Generados
 
-Los resultados visuales y multimedia se guardan de forma persistente en la carpeta `outputs/`:
+Los resultados visuales, gráficos y multimedia se guardan de forma persistente en la carpeta `outputs/`:
 
-| Archivo | Tipo | Descripcion |
+### Mosaico de Pasos Secuenciales Cuadrúpedo (Unitree A1)
+![Pasos Secuenciales A1](outputs/part2_all_steps_grid.png)
+
+### Mosaico de Secuencia Completa Humanoide (Unitree H1)
+![Secuencia Humanoide H1](outputs/part3_motion_sequence_grid.png)
+
+### Lista Completa de Archivos Generados
+
+| Archivo | Tipo | Descripción |
 | :--- | :--- | :--- |
-| `part1_errores_benchmark.png` | Imagen | Histograma de distribucion de error analitico vs Pinocchio ($< 10^{-16}$) |
-| `part1_estructura_robot_3d.png` | Imagen | Visualizacion geometrica 3D del tronco y las 4 cadenas cinematicas de A1 |
-| `part2_a1_gait.gif` | Animacion | Animacion del robot Unitree A1 ejecutando los 4 pasos secuenciales |
-| `part2_a1_gait.mp4` | Video | Video en alta definicion de la simulacion de locomocion en PyBullet |
-| `part2_a1_tracking.png` | Imagen | Curvas de error de seguimiento cartesiano en mm y evolucion articular |
-| `part3_h1_humanoid.gif` | Animacion | Animacion del humanoide H1 (brazos, giro de cintura y recojo del objeto) |
+| `part1_estructura_robot_3d.png` | Imagen | Visualización geométrica 3D del tronco y las 4 cadenas cinemáticas de A1 |
+| `part1_errores_benchmark.png` | Imagen | Histograma de distribución de error analítico vs Pinocchio ($\le 1.11 \times 10^{-16}$) |
+| `part2_all_steps_grid.png` | Imagen | Mosaico 2x2 en alta resolución de los 4 pasos secuenciales del cuadrúpedo A1 |
+| `part2_a1_gait.gif` | Animación | Animación fluida de la marcha secuencial (*Crawl Gait*) en PyBullet |
+| `part2_a1_gait.mp4` | Video | Video HD (1080p equivalente) de la simulación de locomoción en PyBullet |
+| `part2_a1_tracking.png` | Imagen | Curvas de error de seguimiento cartesiano ($< 0.89\text{ mm}$) y ángulos articulares |
+| `part3_motion_sequence_grid.png` | Imagen | Mosaico 2x2 de la secuencia completa del humanoide H1 (brazos, cintura, agache y piso) |
+| `part3_h1_humanoid.gif` | Animación | Animación del humanoide H1 (brazos, giro de cintura y recojo del objeto) |
 | `part3_h1_humanoid.mp4` | Video | Video HD de las secuencias A y B del humanoide en PyBullet |
-| `part3_h1_tracking.png` | Imagen | Curvas de altura de pelvis, altura de mano respecto al piso y angulo de cintura |
+| `part3_h1_tracking.png` | Imagen | Curvas de altura de pelvis, altura de mano respecto al piso y ángulo de cintura |
+| `reporte.pdf` | Documento | Informe académico formal en formato PDF generado a partir de LaTeX |
 
-Consulte el documento [REPORTE.md](file:///home/nvm/Documents/UTEC/Avanzada_tareas/REPORTE.md) para ver la formulacion teorica completa, el analisis de resultados, tablas de evaluacion y conclusiones.
+Consulte el documento [REPORTE.md](file:///home/nvm/Documents/UTEC/Avanzada_tareas/REPORTE.md) para ver la formulación matemática detallada, ecuaciones del QP, análisis de resultados y conclusiones técnicas.
+
