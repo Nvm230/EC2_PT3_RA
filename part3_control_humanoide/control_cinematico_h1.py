@@ -151,6 +151,15 @@ class H1KinematicController:
             v_refs.append(v_ref_l)
             weights.append(np.ones(3) * targets.get("w_l_hand", 1.0))
             
+        if "waist_yaw" in targets:
+            J_waist = np.zeros((1, self.nq))
+            J_waist[0, 10] = 1.0  # torso_joint (rotación en Z)
+            e_w = targets["waist_yaw"] - q_curr[10]
+            v_ref_w = targets.get("waist_vel", 0.0) + self.Kp * e_w
+            J_tasks.append(J_waist)
+            v_refs.append(np.array([v_ref_w]))
+            weights.append(np.array([targets.get("w_waist", 2.0)]))
+            
         J_stack = np.vstack(J_tasks)
         v_stack = np.concatenate(v_refs)
         W_stack = np.diag(np.concatenate(weights))
@@ -298,27 +307,42 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
     for k in range(steps_a):
         t = k * controller.dt
         
-        # Oscilación senoidal suave de la cintura: +/- 35 grados (0.6 rad)
-        freq = 0.5  # Hz
-        waist_target = 0.60 * np.sin(2.0 * np.pi * freq * t)
+        # Frecuencia y rotación explícita de cintura (yaw +/- 26 grados)
+        freq = 0.5  # Hz (periodo de 2.0 s por ciclo)
+        A_waist = 0.45  # rad (~25.8 deg)
+        waist_target = A_waist * np.sin(2.0 * np.pi * freq * t)
+        waist_vel = A_waist * 2.0 * np.pi * freq * np.cos(2.0 * np.pi * freq * t)
         
-        # Trayectoria coordinada de brazos:
-        delta_x = 0.15 * (1.0 - np.cos(2.0 * np.pi * freq * t))
-        delta_z = 0.20 * (1.0 - np.cos(2.0 * np.pi * freq * t))
+        # Movimiento alternado de brazos estilo meme "6-7":
+        # - Primer semiciclo: eleva brazo derecho (+35 cm), brazo izquierdo en reposo
+        # - Segundo semiciclo: eleva brazo izquierdo (+35 cm), brazo derecho en reposo
+        s_val = np.sin(2.0 * np.pi * freq * t)
+        r_act = np.sin(np.pi * np.clip(s_val, 0.0, 1.0))**2
+        l_act = np.sin(np.pi * np.clip(-s_val, 0.0, 1.0))**2
         
-        r_hand_des = p_r_init + np.array([delta_x, -0.05 * np.sin(2*np.pi*freq*t), delta_z])
-        l_hand_des = p_l_init + np.array([delta_x,  0.05 * np.sin(2*np.pi*freq*t), delta_z])
+        H_arm = 0.35   # 35 cm de elevación vertical
+        X_arm = 0.15   # 15 cm de avance frontal
         
-        q_nom = q_stand.copy()
-        q_nom[10] = waist_target  # torso_joint
+        r_hand_des = p_r_init.copy()
+        r_hand_des[0] += X_arm * r_act
+        r_hand_des[1] -= 0.06 * r_act
+        r_hand_des[2] += H_arm * r_act
+        
+        l_hand_des = p_l_init.copy()
+        l_hand_des[0] += X_arm * l_act
+        l_hand_des[1] += 0.06 * l_act
+        l_hand_des[2] += H_arm * l_act
         
         targets = {
             "r_hand_pos": r_hand_des,
-            "w_r_hand": 2.0,
+            "w_r_hand": 1.5,
             "l_hand_pos": l_hand_des,
-            "w_l_hand": 2.0,
-            "q_nominal": q_nom,
-            "w_posture": 0.25
+            "w_l_hand": 1.5,
+            "waist_yaw": waist_target,
+            "waist_vel": waist_vel,
+            "w_waist": 2.5,
+            "q_nominal": q_stand,
+            "w_posture": 0.05
         }
         
         q_current, dq, p_r, p_l = controller.solve_step_qp(q_current, targets)
@@ -346,7 +370,8 @@ def run_humanoid_simulation(gui=True, record_video=False, video_path="outputs/pa
             last_r_hand = r_hand_world
             last_l_hand = l_hand_world
             
-            msg = f"[Mov. A] Brazos + Giro Cintura: {np.rad2deg(q_current[10]):.1f} deg"
+            active_arm = "Brazo Der (6)" if s_val >= 0 else "Brazo Izq (7)"
+            msg = f"[Mov. A: '6-7'] {active_arm} | Giro Cintura: {np.rad2deg(q_current[10]):.1f} deg"
             if debug_text_id >= 0:
                 p.removeUserDebugItem(debug_text_id)
             debug_text_id = p.addUserDebugText(msg, [-0.4, 0, 1.4], textColorRGB=[1, 1, 1], textSize=1.2)

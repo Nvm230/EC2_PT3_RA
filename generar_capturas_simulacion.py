@@ -385,7 +385,7 @@ def generate_humanoid_snapshots():
     print(f"Guardado: {out_stand}")
     
     # -------------------------------------------------------------------------
-    # 2. Ejecutar Movimiento A (Brazos Coordinados + Giro de Cintura)
+    # 2. Ejecutar Movimiento A (Brazos Alternados '6-7' + Giro de Cintura)
     # -------------------------------------------------------------------------
     p_r_init, p_l_init = controller.get_hand_positions(q_stand)
     img_mov_a = None
@@ -394,17 +394,39 @@ def generate_humanoid_snapshots():
     for k in range(200):
         t = k * 0.01
         freq = 0.5
-        waist_target = 0.60 * np.sin(2.0 * np.pi * freq * t)
-        delta_x = 0.15 * (1.0 - np.cos(2.0 * np.pi * freq * t))
-        delta_z = 0.20 * (1.0 - np.cos(2.0 * np.pi * freq * t))
+        A_waist = 0.45  # ~25.8 deg
+        waist_target = A_waist * np.sin(2.0 * np.pi * freq * t)
+        waist_vel = A_waist * 2.0 * np.pi * freq * np.cos(2.0 * np.pi * freq * t)
         
-        r_des = p_r_init + np.array([delta_x, -0.05 * np.sin(2*np.pi*freq*t), delta_z])
-        l_des = p_l_init + np.array([delta_x,  0.05 * np.sin(2*np.pi*freq*t), delta_z])
+        # Movimiento alternado de brazos estilo '6-7'
+        s_val = np.sin(2.0 * np.pi * freq * t)
+        r_act = np.sin(np.pi * np.clip(s_val, 0.0, 1.0))**2
+        l_act = np.sin(np.pi * np.clip(-s_val, 0.0, 1.0))**2
         
-        q_nom = q_stand.copy()
-        q_nom[10] = waist_target
+        H_arm = 0.35   # 35 cm de elevación
+        X_arm = 0.15   # 15 cm de avance
         
-        targets = {"r_hand_pos": r_des, "w_r_hand": 2.0, "l_hand_pos": l_des, "w_l_hand": 2.0, "q_nominal": q_nom, "w_posture": 0.25}
+        r_des = p_r_init.copy()
+        r_des[0] += X_arm * r_act
+        r_des[1] -= 0.06 * r_act
+        r_des[2] += H_arm * r_act
+        
+        l_des = p_l_init.copy()
+        l_des[0] += X_arm * l_act
+        l_des[1] += 0.06 * l_act
+        l_des[2] += H_arm * l_act
+        
+        targets = {
+            "r_hand_pos": r_des,
+            "w_r_hand": 1.5,
+            "l_hand_pos": l_des,
+            "w_l_hand": 1.5,
+            "waist_yaw": waist_target,
+            "waist_vel": waist_vel,
+            "w_waist": 2.5,
+            "q_nominal": q_stand,
+            "w_posture": 0.05
+        }
         q_current, _, _, _ = controller.solve_step_qp(q_current, targets)
         p.setJointMotorControlArray(
             robot_id, controller.pb_joint_indices, p.POSITION_CONTROL,
@@ -412,12 +434,12 @@ def generate_humanoid_snapshots():
         )
         p.stepSimulation()
         
-        # Pico de rotación y elevación
-        if k == 100:
+        # Pico de rotación y elevación (k = 50: máx elevación brazo derecho y máx giro cintura +25.8°)
+        if k == 50:
             raw_a = capture_frame(1024, 768, view_mat, proj_mat)
             img_mov_a = annotate_image(
-                raw_a, "Movimiento A: Elevación de Brazos con Giro de Cintura (+34.4°)",
-                badge_text="MOV. A | CINTURA YAW",
+                raw_a, "Movimiento A: Elevación Alternada '6-7' con Giro de Cintura (+25.8°)",
+                badge_text="MOV. A | GESTO '6-7' YAW",
                 badge_color=(40, 167, 69)
             )
             out_a = "/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part3_dual_arms_waist.png"

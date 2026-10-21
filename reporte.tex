@@ -212,11 +212,12 @@ El robot humanoide Unitree H1 posee 19 grados de libertad articulados:
     \item 8 articulaciones de brazos (4 en cada brazo: hombro pitch/roll/yaw y codo pitch).
 \end{itemize}
 
-\subsection{Movimiento A: Brazos Coordinados y Giro de Cintura}
-Se asignaron referencias sinusoidales en espacio cartesiano para ambas manos, acopladas a la oscilación de la cintura a $0.5\text{ Hz}$ con amplitud de $\pm 35^\circ$ ($0.6\text{ rad}$):
+\subsection{Movimiento A: Elevación Alternada de Brazos y Giro Explícito de Cintura}
+Se asignaron referencias cinemáticas en el espacio cartesiano formuladas mediante QP para un movimiento rítmico alternado de ambos brazos (elevación sucesiva de cada brazo hasta $+35\text{ cm}$), sincronizado con el giro explícito de la cintura a $0.5\text{ Hz}$ con una amplitud angular efectiva de $\pm 25.8^\circ$ ($0.45\text{ rad}$):
 \begin{equation}
-q_{torso, d}(t) = 0.60 \sin(2\pi f t)
+q_{torso, d}(t) = 0.45 \sin(2\pi f t)
 \end{equation}
+La rotación de la cintura se formuló como una tarea cinemática explícita con su respectiva fila en el Jacobiano ($J_{waist}$), garantizando que el optimizador ProxQP ejecute un giro deliberado y evidente del torso en simultáneo con la elevación y descenso de los brazos.
 
 \subsection{Movimiento B: Agache Profundo y Descenso de la Mano hasta el Piso}
 Para recoger un objeto cilíndrico rojo situado sobre el piso en las coordenadas $[0.28, -0.18, 0.08]\text{ m}$ (altura $0.16\text{ m}$, radio $0.04\text{ m}$):

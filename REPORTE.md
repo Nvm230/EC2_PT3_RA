@@ -209,15 +209,16 @@ El robot humanoide **Unitree H1** cuenta con **19 grados de libertad articulados
 
 ---
 
-### 3.2 Movimiento A: Brazos Coordinados con Giro de Cintura
+### 3.2 Movimiento A: Elevación Alternada de Brazos con Giro Explícito de Cintura
 
 #### Formulación:
-- **Cintura:** Trayectoria sinusoidal de rotación de torso a $0.5\text{ Hz}$ con amplitud de $\pm 35^\circ$ ($0.6\text{ rad}$):
-  $$q_{torso, d}(t) = 0.60 \sin(2\pi f t)$$
-- **Brazos:** Elevación rítmica coordinada en espacio cartesiano para ambas manos con avance longitudinal:
-  $$p_{R, d}(t) = p_{R, 0} + \begin{bmatrix} 0.15 (1 - \cos 2\pi f t) \\ -0.05 \sin 2\pi f t \\ 0.20 (1 - \cos 2\pi f t) \end{bmatrix}, \quad p_{L, d}(t) = p_{L, 0} + \begin{bmatrix} 0.15 (1 - \cos 2\pi f t) \\ +0.05 \sin 2\pi f t \\ 0.20 (1 - \cos 2\pi f t) \end{bmatrix}$$
+- **Cintura (torso_joint):** Trayectoria sinusoidal explícita de rotación del torso a $0.5\text{ Hz}$ con amplitud angular de $\pm 25.8^\circ$ ($0.45\text{ rad}$):
+  $$q_{torso, d}(t) = 0.45 \sin(2\pi f t)$$
+- **Brazos (Gesto Alternado '6-7'):** Elevación rítmica alternada de cada extremidad superior (cuando la cintura gira a la derecha se eleva el brazo derecho hasta $+35\text{ cm}$; al invertir el giro se eleva el brazo izquierdo):
+  $$r_{act}(t) = \sin^2\left(\pi \cdot \text{clip}(\sin(2\pi f t), 0, 1)\right), \quad l_{act}(t) = \sin^2\left(\pi \cdot \text{clip}(-\sin(2\pi f t), 0, 1)\right)$$
+  $$p_{R, d}(t) = p_{R, 0} + \begin{bmatrix} 0.15 \, r_{act}(t) \\ -0.06 \, r_{act}(t) \\ 0.35 \, r_{act}(t) \end{bmatrix}, \quad p_{L, d}(t) = p_{L, 0} + \begin{bmatrix} 0.15 \, l_{act}(t) \\ +0.06 \, l_{act}(t) \\ 0.35 \, l_{act}(t) \end{bmatrix}$$
 
-El problema QP resuelto en cada ciclo minimiza el error de las dos manos simultáneamente mientras asigna una tarea postural en el espacio nulo para seguir $q_{torso, d}(t)$.
+La cinemática inversa resuelta con ProxQP incluye el giro de cintura como una tarea cartesiana/articular explícita ($J_{waist}$ con peso ponderado $2.5$), garantizando un giro fluido, amplio y deliberado del torso mientras ambos brazos ejecutan el gesto alternado.
 
 ---
 
