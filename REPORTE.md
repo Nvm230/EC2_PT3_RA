@@ -180,7 +180,7 @@ Coordenadas cartesianas del pie en balanceo:
 - Elevación: $z(\tau) = z_{ground} + h \sin(\pi s(\tau))$
 
 ![Capturas Secuenciales de los 4 Pasos de Unitree A1 en PyBullet](outputs/part2_all_steps_grid.png)
-*Figura 3: Capturas en alta resolución de la simulación en PyBullet mostrando la ejecución secuencial de los 4 pasos dados por el robot Unitree A1 con trazas tridimensionales de trayectoria y cámara encuadrada.*
+*Figura 3: Capturas en alta resolución de la simulación en PyBullet mostrando la ejecución secuencial de los 4 pasos dados por el robot Unitree A1 con encuadres dinámicos de cámara, resaltado cromático de cada pata activa en balanceo, trazas tridimensionales de trayectoria quíntica, cotas de elevación vertical ($h = 8.0\text{ cm}$) e indicador HUD del estado de soporte trípode.*
 
 ---
 

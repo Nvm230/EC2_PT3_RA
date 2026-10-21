@@ -119,19 +119,40 @@ def generate_quadruped_snapshots():
     for _ in range(40):
         p.stepSimulation()
         
-    # Cámara perfectamente encuadrada para el cuadrúpedo
-    cam_target = [0.08, 0.0, 0.22]
-    cam_dist = 0.82
-    cam_yaw = 42.0
-    cam_pitch = -22.0
-    view_mat = p.computeViewMatrixFromYawPitchRoll(cam_target, cam_dist, cam_yaw, cam_pitch, 0, 2)
-    proj_mat = p.computeProjectionMatrixFOV(50, 1024/768, 0.1, 10.0)
-    
     p_feet_init, _ = controller.kin.forward_kinematics_full(q_nominal)
     p_targets = p_feet_init.copy()
     current_q = q_nominal.copy()
     
     step_sequence = [0, 3, 1, 2]
+    leg_links = {
+        0: [9, 10],   # FL (muslo y pantorrilla)
+        3: [14, 15],  # RR
+        1: [4, 5],    # FR
+        2: [19, 20]   # RL
+    }
+    
+    # Cámaras dinámicas encuadradas en primer plano para cada pata activa
+    cams = [
+        {"target": [0.10, 0.08, 0.18], "dist": 0.72, "yaw": 140.0, "pitch": -14.0},   # FL
+        {"target": [-0.10, -0.08, 0.18], "dist": 0.72, "yaw": 320.0, "pitch": -14.0},  # RR
+        {"target": [0.10, -0.08, 0.18], "dist": 0.72, "yaw": 40.0, "pitch": -14.0},    # FR
+        {"target": [-0.10, 0.08, 0.18], "dist": 0.72, "yaw": 220.0, "pitch": -14.0},   # RL
+    ]
+    
+    colors_rgba = [
+        [0.0, 0.85, 1.0, 1.0],   # FL: Cyan brillante
+        [1.0, 0.75, 0.0, 1.0],   # RR: Amarillo oro
+        [0.1, 0.90, 0.25, 1.0],  # FR: Verde esmeralda
+        [0.92, 0.25, 0.92, 1.0]  # RL: Magenta eléctrico
+    ]
+    
+    colors_rgb_pil = [
+        (0, 215, 255),    # FL: Cyan
+        (255, 190, 0),    # RR: Amarillo oro
+        (25, 230, 65),    # FR: Verde esmeralda
+        (235, 65, 235)    # RL: Magenta
+    ]
+    
     leg_titles = [
         "Paso 1/4: Pata Delantera Izquierda (FL) en Balanceo",
         "Paso 2/4: Pata Trasera Derecha (RR) en Balanceo",
@@ -144,23 +165,31 @@ def generate_quadruped_snapshots():
         "SWING FR | ELEV: 8.0 cm",
         "SWING RL | ELEV: 8.0 cm"
     ]
-    badge_colors = [
-        (220, 53, 69),   # Rojo
-        (243, 156, 18),  # Naranja
-        (40, 167, 69),   # Verde
-        (23, 162, 184)   # Azul
-    ]
-    leg_draw_colors = {0: [1, 0, 0], 3: [1, 0.5, 0], 1: [0, 0.8, 0], 2: [0, 0.4, 1]}
+    leg_codes = ["FL", "RR", "FR", "RL"]
     
     snapshots = {}
-    last_pt = None
     
     for step_num, leg_idx in enumerate(step_sequence):
+        # Restaurar color nominal en todas las patas
+        for l_idx in [0, 1, 2, 3]:
+            for l in leg_links[l_idx]:
+                p.changeVisualShape(robot_id, l, rgbaColor=[0.85, 0.35, 0.05, 1.0])
+        # Resaltar pata activa en balanceo
+        for l in leg_links[leg_idx]:
+            p.changeVisualShape(robot_id, l, rgbaColor=colors_rgba[step_num])
+            
         p_start_leg = p_targets[leg_idx*3 : leg_idx*3+3].copy()
         p_end_leg = p_start_leg.copy()
         p_end_leg[0] += 0.10
         
         steps_count = 120
+        traj_3d = []
+        mid_img = None
+        
+        cam = cams[step_num]
+        view_mat = p.computeViewMatrixFromYawPitchRoll(cam["target"], cam["dist"], cam["yaw"], cam["pitch"], 0, 2)
+        proj_mat = p.computeProjectionMatrixFOV(50, 1024/768, 0.1, 10.0)
+        
         for k in range(steps_count):
             tau = (k + 1) / steps_count
             p_leg_des, v_leg_des = generate_swing_trajectory(tau, p_start_leg, p_end_leg, step_height=0.08)
@@ -175,29 +204,112 @@ def generate_quadruped_snapshots():
             )
             p.stepSimulation()
             
-            # Trazar línea de trayectoria en PyBullet
-            foot_pos = p.getLinkState(robot_id, controller.pb_foot_links[leg_idx])[0]
-            if last_pt is not None:
-                p.addUserDebugLine(last_pt, foot_pos, leg_draw_colors[leg_idx], lineWidth=4, lifeTime=0)
-            last_pt = foot_pos
+            # Registrar posición real 3D del pie en PyBullet
+            pb_pos = p.getLinkState(robot_id, controller.pb_foot_links[leg_idx])[0]
+            traj_3d.append(pb_pos)
             
-            # Capturar exactamente en mitad del paso (máxima elevación de 8 cm)
+            # Capturar exactamente en el vértice (máxima elevación de 8.0 cm)
             if k == steps_count // 2:
-                raw_img = capture_frame(1024, 768, view_mat, proj_mat)
-                annotated = annotate_image(
-                    raw_img, leg_titles[step_num],
-                    badge_text=leg_badges[step_num],
-                    badge_color=badge_colors[step_num]
-                )
-                out_path = f"/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part2_step_{step_num+1}.png"
-                annotated.save(out_path)
-                snapshots[step_num] = annotated
-                print(f"Guardado: {out_path}")
+                img_data = p.getCameraImage(1024, 768, viewMatrix=view_mat, projectionMatrix=proj_mat, renderer=p.ER_BULLET_HARDWARE_OPENGL)
+                rgba = np.reshape(img_data[2], (768, 1024, 4))
+                mid_img = Image.fromarray(rgba[:, :, :3])
                 
-        last_pt = None
-        for _ in range(15):
-            p.stepSimulation()
+        # Proyección de la trayectoria 3D sobre el plano de imagen 2D
+        V = np.array(view_mat).reshape((4, 4), order="F")
+        P = np.array(proj_mat).reshape((4, 4), order="F")
+        VP = P @ V
+        
+        def project(pt):
+            v = np.array([pt[0], pt[1], pt[2], 1.0])
+            clip = VP @ v
+            ndc = clip[:3] / clip[3]
+            return (ndc[0] + 1) * 0.5 * 1024, (1 - ndc[1]) * 0.5 * 768
             
+        traj_2d = [project(pt) for pt in traj_3d]
+        
+        overlay = Image.new("RGBA", (1024, 768), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        col_pil = colors_rgb_pil[step_num]
+        
+        # 1. Trazo luminoso de la parábola de trayectoria (halo + línea central)
+        for i in range(len(traj_2d) - 1):
+            draw.line([traj_2d[i], traj_2d[i+1]], fill=(col_pil[0], col_pil[1], col_pil[2], 80), width=10)
+        for i in range(len(traj_2d) - 1):
+            draw.line([traj_2d[i], traj_2d[i+1]], fill=(col_pil[0], col_pil[1], col_pil[2], 255), width=3)
+            
+        # 2. Marcadores de Inicio y Aterrizaje en el suelo
+        u_start, v_start = traj_2d[0]
+        u_end, v_end = traj_2d[-1]
+        draw.ellipse([u_start-5, v_start-5, u_start+5, v_start+5], fill=(255, 255, 255, 240), outline=(50, 50, 50, 255), width=2)
+        draw.ellipse([u_end-6, v_end-6, u_end+6, v_end+6], fill=(col_pil[0], col_pil[1], col_pil[2], 160), outline=(255, 255, 255, 255), width=2)
+        
+        # 3. Línea vertical de cota de elevación (Apex vs Suelo)
+        apex_idx = steps_count // 2
+        apex_pt = traj_3d[apex_idx]
+        floor_pt = [apex_pt[0], apex_pt[1], traj_3d[0][2]]
+        u_apex, v_apex = project(apex_pt)
+        u_floor, v_floor = project(floor_pt)
+        
+        # Línea punteada de despegue
+        y_dist = abs(v_floor - v_apex)
+        y_steps = max(1, int(y_dist / 6))
+        for s in range(0, y_steps, 2):
+            y_s = v_apex + s * 6
+            y_e = min(v_floor, y_s + 4)
+            draw.line([(u_apex, y_s), (u_apex, y_e)], fill=(255, 230, 0, 240), width=2)
+            
+        draw.ellipse([u_floor-4, v_floor-4, u_floor+4, v_floor+4], fill=(255, 230, 0, 240))
+        draw.ellipse([u_apex-7, v_apex-7, u_apex+7, v_apex+7], fill=(255, 255, 255, 255), outline=col_pil, width=3)
+        
+        # Cartela de cota h = 8.0 cm
+        font_sm = get_font(13, bold=True)
+        lx0, ly0 = u_apex + 14, v_apex - 12
+        draw.rectangle([(lx0, ly0), (lx0 + 102, ly0 + 24)], fill=(20, 26, 36, 220), outline=(255, 230, 0, 240), width=1)
+        draw.text((lx0 + 8, ly0 + 4), "h = 8.0 cm", fill=(255, 255, 255, 255), font=font_sm)
+        
+        # 4. Barra Superior Profesional
+        bar_h = 54
+        draw.rectangle([(0, 0), (1024, bar_h)], fill=(20, 26, 36, 245))
+        draw.line([(0, bar_h), (1024, bar_h)], fill=(50, 65, 85, 255), width=2)
+        
+        font_title = get_font(21, bold=True)
+        font_badge = get_font(15, bold=True)
+        draw.text((25, 14), leg_titles[step_num], fill=(255, 255, 255, 255), font=font_title)
+        
+        bw, bh = 250, 32
+        bx0, by0 = 1024 - bw - 20, 11
+        draw.rectangle([(bx0, by0), (bx0 + bw, by0 + bh)], fill=(col_pil[0], col_pil[1], col_pil[2], 230))
+        draw.text((bx0 + 14, by0 + 7), leg_badges[step_num], fill=(255, 255, 255, 255), font=font_badge)
+        
+        # 5. Mini HUD Card (Estado de Soporte Cinemático) en la esquina inferior izquierda
+        hud_w, hud_h = 260, 82
+        hx0, hy0 = 25, 768 - hud_h - 20
+        draw.rectangle([(hx0, hy0), (hx0 + hud_w, hy0 + hud_h)], fill=(15, 23, 42, 235), outline=(51, 65, 85, 255), width=1)
+        
+        font_hud_title = get_font(12, bold=True)
+        font_hud_info = get_font(11, bold=False)
+        draw.text((hx0 + 12, hy0 + 8), "ESTADO DE SOPORTE CINEMÁTICO", fill=(148, 163, 184, 255), font=font_hud_title)
+        
+        dog_feet = {
+            "FL": (hx0 + 26, hy0 + 36), "FR": (hx0 + 62, hy0 + 36),
+            "RL": (hx0 + 26, hy0 + 60), "RR": (hx0 + 62, hy0 + 60)
+        }
+        active_code = leg_codes[step_num]
+        for f_code, (fx, fy) in dog_feet.items():
+            if f_code == active_code:
+                draw.ellipse([fx-6, fy-6, fx+6, fy+6], fill=col_pil, outline=(255, 255, 255, 255), width=2)
+            else:
+                draw.ellipse([fx-5, fy-5, fx+5, fy+5], fill=(34, 197, 94, 255))
+                
+        draw.text((hx0 + 82, hy0 + 34), f"Pata {active_code}: BALANCEO (Swing)", fill=col_pil, font=font_hud_info)
+        draw.text((hx0 + 82, hy0 + 52), "3 Patas: APOYO TRÍPODE", fill=(203, 213, 225, 255), font=font_hud_info)
+        
+        final_step_img = Image.alpha_composite(mid_img.convert("RGBA"), overlay).convert("RGB")
+        out_path = f"/home/nvm/Documents/UTEC/Avanzada_tareas/outputs/part2_step_{step_num+1}.png"
+        final_step_img.save(out_path)
+        snapshots[step_num] = final_step_img
+        print(f"Guardado: {out_path}")
+        
     # Mosaico 2x2 de alta resolución con separador estilizado
     composite = Image.new("RGB", (2048 + 8, 1536 + 8), color=(30, 41, 59))
     composite.paste(snapshots[0], (0, 0))

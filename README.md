@@ -160,7 +160,7 @@ Los resultados visuales, gráficos y multimedia se guardan de forma persistente 
 | :--- | :--- | :--- |
 | `part1_estructura_robot_3d.png` | Imagen | Visualización geométrica 3D del tronco y las 4 cadenas cinemáticas de A1 |
 | `part1_errores_benchmark.png` | Imagen | Histograma de distribución de error analítico vs Pinocchio ($\le 1.11 \times 10^{-16}$) |
-| `part2_all_steps_grid.png` | Imagen | Mosaico 2x2 en alta resolución de los 4 pasos secuenciales del cuadrúpedo A1 |
+| `part2_all_steps_grid.png` | Imagen | Mosaico 2x2 en alta resolución de los 4 pasos secuenciales del cuadrúpedo A1 con trazas 3D, cotas de altura y HUD |
 | `part2_a1_gait.gif` | Animación | Animación fluida de la marcha secuencial (*Crawl Gait*) en PyBullet |
 | `part2_a1_gait.mp4` | Video | Video HD (1080p equivalente) de la simulación de locomoción en PyBullet |
 | `part2_a1_tracking.png` | Imagen | Curvas de error de seguimiento cartesiano ($< 0.89\text{ mm}$) y ángulos articulares |
