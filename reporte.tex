@@ -31,7 +31,7 @@
 \title{\vspace{-1.5cm}\textbf{\Large Tarea de Robótica Avanzada:}\\[0.3cm]
 \textbf{\huge Modelado Cinemático, Jacobiano de Cuerpo Completo y Control Cinemático con ProxQP en PyBullet}\\[0.5cm]
 \large Robótica Cuadrúpeda (Unitree A1) y Humanoide (Unitree H1)}
-\author{\textbf{Estudiantes:} Grupo de Robótica Avanzada \\
+\author{\textbf{Estudiantes:} Brenda de la Cruz, Marco Alegria \\
 \textbf{Institución:} Universidad de Ingeniería y Tecnología (UTEC)}
 \date{\today}
 
@@ -220,7 +220,7 @@ q_{torso, d}(t) = 0.45 \sin(2\pi f t)
 La rotación de la cintura se formuló como una tarea cinemática explícita con su respectiva fila en el Jacobiano ($J_{waist}$), garantizando que el optimizador ProxQP ejecute un giro deliberado y evidente del torso en simultáneo con la elevación y descenso de los brazos.
 
 \subsection{Movimiento B: Agache Profundo y Descenso de la Mano hasta el Piso}
-Para recoger un objeto cilíndrico rojo situado sobre el piso en las coordenadas $[0.28, -0.18, 0.08]\text{ m}$ (altura $0.16\text{ m}$, radio $0.04\text{ m}$):
+Para recoger un objeto cilíndrico rojo en el piso en las coordenadas $[0.28, -0.18, 0.08]\text{ m}$ (altura de $0.16\text{ m}$ y radio de $0.04\text{ m}$):
 \begin{enumerate}
     \item \textbf{Flexión profunda y guiado estable de pelvis:} La pelvis desciende de forma controlada desde $z = 0.98\text{ m}$ hasta $z = 0.46\text{ m}$ acompañada de una inclinación frontal coordinada ($\theta_{pitch} = 31.5^\circ$) para mantener el centro de gravedad dentro de la base de soporte bipodal. Rodillas flexionadas a $q_{knee} = 1.95\text{ rad}$ ($111.7^\circ$), caderas a $q_{hip} = -1.55\text{ rad}$ y compensación de tobillos a $q_{ankle} = -0.95\text{ rad}$, asegurando contacto firme de los pies y previniendo el colapso del robot.
     \item \textbf{Proyección del brazo derecho:} El hombro ($q_{pitch} = -0.65\text{ rad}$) y el codo ($q_{elbow} = 1.35\text{ rad}$) orientan el antebrazo verticalmente hacia abajo, permitiendo que la mano descienda en proximidad directa y toque el extremo superior del objeto en el piso a $z = 0.16\text{ m}$.
